@@ -1,0 +1,31 @@
+{
+  "research_date_utc": "2026-10-25",
+  "runtime": {
+    "python": "3.12.14",
+    "cryptography": "50.0.2",
+    "node": "24.22.1",
+    "playwright": "1.62.1"
+  },
+  "http_signature_lab": {
+    "executed": true,
+    "passed_scenario_assertions": 19,
+    "results_file": "redirect_lab_results.json",
+    "interpretation": "Expected negative outcomes and vulnerability demonstrations also count as passed assertions. This is not a recovery or safety percentage."
+  },
+  "browser_gate_lab": {
+    "launch_attempted": true,
+    "completed_browser_checks": 0,
+    "results_file": "browser_gate_results.json",
+    "launch_blocker": "Chromium executable was absent",
+    "installation_attempt": {
+      "command": "playwright install chromium --no-shell",
+      "requested_browser": "Chrome for Testing 151.0.7922.34",
+      "outcome": "failed",
+      "exit_status": 1,
+      "reported_error": "End of central directory record signature not found"
+    },
+    "status": "Unverified; remains an open feasibility and release gate"
+  },
+  "production_implementation": "Not started",
+  "repository_modified": false
+}

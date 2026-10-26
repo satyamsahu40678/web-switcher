@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Switcher</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body class="popup-body">
+  <main class="popup-shell">
+    <header class="popup-topbar"><div class="brand"><img src="spider.svg" alt="" width="32" height="32"><span>Web Switcher</span></div><button id="settings" class="text-button" type="button" aria-label="Open Web Switcher settings">Settings ↗</button></header>
+    <div class="popup-status"><span class="status-dot" aria-hidden="true"></span><span id="global-status">Reading local settings…</span></div>
+    <h1 id="popup-title">Keep the thread.</h1>
+    <p id="popup-message">Checking this tab against your saved mappings.</p>
+    <section class="popup-site" aria-labelledby="current-title">
+      <p class="eyebrow" id="current-title">CURRENT ORIGIN</p>
+      <h2 id="current-origin" class="origin-text">Reading current tab…</h2>
+      <div id="mapping-details" hidden>
+        <p id="mapping-status" class="mapping-state"></p>
+        <p id="mapping-destination" class="destination"></p>
+        <p class="provenance">User configured · Not owner or registry verified</p>
+        <p id="mapping-freshness" class="hint"></p>
+      </div>
+    </section>
+    <button id="open-current" class="primary" type="button" hidden>Open destination homepage ↗</button>
+    <button id="add-mapping" class="primary" type="button">Manage connections ↗</button>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <div class="popup-footer"><span id="active-count" class="popup-count">Local mappings</span><button id="pause-all" class="secondary" type="button" disabled>Pause switching</button></div>
+    <div class="actions"><button id="undo" class="text-button" type="button" hidden>Undo latest switch</button><button id="clear" class="text-button" type="button" hidden>Clear activity</button></div>
+    <p class="hint">Local choices. No account or telemetry. Unknown sites stay unchanged.</p>
+  </main>
+</body>
+</html>

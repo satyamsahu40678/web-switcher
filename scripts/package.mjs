@@ -1,0 +1,11 @@
+import {mkdir, cp, rm, readFile} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const config = await readFile('extension/build-config.js', 'utf8');
+assert.match(config, /export const ALLOW_TEST_ORIGINS = false;/, 'Never package fixture mode.');
+await mkdir('dist', {recursive: true});
+await rm('dist/web-switcher', {recursive: true, force: true});
+await cp('extension', 'dist/web-switcher', {recursive: true});
+const zip = spawnSync('python3', ['-c', "from pathlib import Path; from zipfile import ZipFile,ZIP_DEFLATED; root=Path('dist/web-switcher'); z=ZipFile('dist/web-switcher-prototype.zip','w',ZIP_DEFLATED); [z.write(p,p.relative_to(root)) for p in sorted(root.rglob('*')) if p.is_file()]; z.close()"], {stdio: 'inherit'});
+if (zip.status !== 0) throw new Error('ZIP creation requires Python 3. The unpacked extension is in dist/web-switcher.');
+console.log('Created dist/web-switcher-prototype.zip. This is an experimental unpacked extension, not a store release.');

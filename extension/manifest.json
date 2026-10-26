@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Web Switcher — routing prototype",
+  "version": "0.1.0",
+  "minimum_chrome_version": "120",
+  "description": "Follow explicitly configured website moves, with local expiry and pause checks.",
+  "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"service_worker": "background.js", "type": "module"},
+  "action": {"default_title": "Open Web Switcher"},
+  "options_page": "options.html",
+  "web_accessible_resources": [{"resources": ["route.html"], "matches": ["<all_urls>"]}],
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"}
+}
