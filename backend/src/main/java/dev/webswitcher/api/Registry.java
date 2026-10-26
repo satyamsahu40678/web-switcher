@@ -59,6 +59,7 @@ class Registry {
   var rows=db.queryForList("SELECT * FROM candidate WHERE id=? FOR UPDATE",id);
   if(rows.isEmpty())throw Policy.problem(404,"NOT_FOUND","Candidate not found.");var candidate=rows.getFirst();
   if(((Number)candidate.get("version")).longValue()!=version)throw Policy.problem(409,"VERSION_CONFLICT","Candidate changed; reload before deciding.");
+  if(db.queryForObject("SELECT COUNT(*) FROM pending_decision WHERE candidate_id=? AND published_sequence IS NOT NULL",Integer.class,id)>0)throw Policy.problem(409,"PUBLISHED_REVIEW_IMMUTABLE","Submit a new correction report; published review provenance is immutable.");
   if(actor.equals(candidate.get("submitter")))throw Policy.problem(403,"SELF_REVIEW","A submitter cannot approve their own report.");
   if(!Set.of("approved","rejected","quarantined").contains(decision))throw Policy.problem(400,"INVALID_DECISION","Decision must be approved, rejected or quarantined.");
   if(reason.length()<10)throw Policy.problem(400,"REVIEW_REASON_REQUIRED","Record a substantive review reason (at least 10 characters).");
@@ -73,6 +74,8 @@ class Registry {
   long sequence=((Number)db.queryForMap("SELECT next_sequence FROM release_counter WHERE id=1 FOR UPDATE").get("next_sequence")).longValue();
   var pending=db.queryForList("SELECT * FROM pending_decision WHERE published_sequence IS NULL AND valid_until>CURRENT_TIMESTAMP ORDER BY id");
   if(pending.stream().anyMatch(d->actor.equals(d.get("reviewer"))))throw Policy.problem(403,"INDEPENDENT_PUBLISHER_REQUIRED","Reviewing and publishing the same decision requires different actors.");
+  var targetBySource=new HashMap<String,String>();
+  for(var d:pending){String source=d.get("source_origin").toString(),target=d.get("destination_origin").toString();String previous=targetBySource.putIfAbsent(source,target);if(previous!=null&&!previous.equals(target))throw Policy.problem(409,"CONFLICTING_DECISIONS","Conflicting reviewed destinations require investigation before publication.");}
   Instant issued=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS),expires=issued.plusSeconds(3600);
   for(var d:pending){
    String source=Policy.origin(d.get("source_origin").toString()),target=Policy.origin(d.get("destination_origin").toString());

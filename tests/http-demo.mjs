@@ -8,7 +8,7 @@ assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname), 'Demo creden
 const checks = [];
 async function check(name, run) { await run(); checks.push({name, passed: true}); console.log(`PASS ${name}`); }
 async function request(path, {method = 'GET', body, cookie, csrf, raw, headers = {}} = {}) {
-  const response = await fetch(base + path, {method, headers: {...(cookie ? {Cookie: cookie} : {}), ...(csrf ? {'X-CSRF-TOKEN': csrf} : {}), ...(body ? {'Content-Type': 'application/json'} : {}), ...headers}, body: raw ?? (body ? JSON.stringify(body) : undefined), redirect: 'manual'});
+  const response = await fetch(base + path, {signal: AbortSignal.timeout(15000), method, headers: {...(cookie ? {Cookie: cookie} : {}), ...(csrf ? {'X-CSRF-TOKEN': csrf} : {}), ...(body ? {'Content-Type': 'application/json'} : {}), ...headers}, body: raw ?? (body ? JSON.stringify(body) : undefined), redirect: 'manual'});
   const text = await response.text();
   return {status: response.status, headers: response.headers, text, json: text && response.headers.get('Content-Type')?.includes('json') ? JSON.parse(text) : null};
 }

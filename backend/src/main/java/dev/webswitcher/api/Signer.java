@@ -13,7 +13,7 @@ import java.util.*;
 
 @Component
 class Signer {
- static final ObjectMapper JSON=new ObjectMapper(JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build());
+ static final ObjectMapper JSON=new ObjectMapper(JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build()).enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
  private final PrivateKey privateKey;private final PublicKey publicKey;final String keyId;final boolean demo;
  Signer(@Value("${web-switcher.demo}")boolean demo,@Value("${web-switcher.publishing-private-key:}")String keyFile,@Value("${web-switcher.publishing-key-id:}")String keyId,@Value("${web-switcher.runtime-role:api}")String role,org.springframework.core.env.Environment environment)throws Exception{
   if(demo&&!environment.acceptsProfiles(org.springframework.core.env.Profiles.of("demo")))throw new IllegalStateException("Demo mode requires the explicit demo Spring profile.");

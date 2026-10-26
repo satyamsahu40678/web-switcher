@@ -11,7 +11,7 @@ A built ZIP, a Git commit, a successful GitHub push, a green CI run, a published
 5. Commit a coherent checkpoint and push the selected branch. Confirm its exact remote SHA. If authentication fails, retain local commits/source archives and report the actual error.
 6. Inspect the actual GitHub Actions run before saying CI passed. A workflow file alone provides no execution evidence.
 
-The platform workflow uses read-only repository permissions and immutable action commit references. It compiles/tests Java and JavaScript, builds web assets, packages the extension, runs the Chromium harness and preserves artifacts. Container image publication, SBOM/license scanning, signature publication, live deployment and store upload are not silently performed by that workflow.
+The platform workflow uses read-only repository permissions and immutable action commit references. It compiles/tests Java and JavaScript, builds web assets, packages the extension, runs Chromium extension/web UI acceptance, starts an isolated synthetic Java demo for cross-language API/signature checks, and preserves artifacts. Container image publication, SBOM/license scanning, signature publication, live deployment and store upload are not silently performed by that workflow.
 
 ## Staging and public launch gates
 

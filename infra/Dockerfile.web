@@ -11,6 +11,9 @@ COPY apps/web/public/ ./public/
 RUN npm run build
 
 FROM caddy:2-alpine
+# Port 8080 needs no bind capability; remove the upstream binary file capability
+# so it can execute with the Compose service's empty capability bounding set.
+RUN setcap -r /usr/bin/caddy
 COPY infra/caddy/Caddyfile.demo /etc/caddy/Caddyfile
 COPY --from=build /src/dist/ /srv/
 EXPOSE 8080

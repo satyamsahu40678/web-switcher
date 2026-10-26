@@ -168,7 +168,7 @@ async function handle(message, sender) {
   const current = await readConfig();
   if (message.type === 'read') {
     const registry = await currentCatalog();
-    return {config: current, receipts: await receiptsNow(), grantedOrigins: [...await grantedFor((await routingState(current)).config)], registryConfigured: Object.keys(TRUSTED_REGISTRY_KEYS).length > 0, registryRefreshConfigured: Boolean(REGISTRY_URL), registry: registry.catalog ? {sequence: registry.sequence, expiresAt: registry.catalog.expiresAt, families: registry.catalog.families} : {error: registry.error}};
+    return {config: current, receipts: await receiptsNow(), grantedOrigins: [...await grantedFor((await routingState(current)).config)], registryConfigured: Object.keys(TRUSTED_REGISTRY_KEYS).length > 0, registryRefreshConfigured: Boolean(REGISTRY_URL), registry: registry.catalog ? {sequence: registry.sequence, expiresAt: registry.catalog.expiresAt, families: registry.catalog.families, aliases: registry.catalog.aliases.flatMap(alias => { const decision = registry.catalog.decisions.find(item => item.familyId === alias.familyId); return decision ? [{sourceOrigin: alias.sourceOrigin, familyId: alias.familyId, destinationOrigin: decision.destinationOrigin, trustClass: decision.trustClass, validUntil: decision.validUntil}] : []; })} : {error: registry.error}};
   }
   if (message.type === 'clearReceipts') { await chrome.storage.local.remove('receipts'); await chrome.storage.session.remove('receiptTabs'); return {ok: true}; }
   if (message.type === 'undo') return undo(message);

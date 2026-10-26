@@ -46,7 +46,7 @@ flowchart LR
 
 Pending reviewer decisions and activated catalog data stay separate. Catalog publication uses a monotonically increasing sequence and immutable signed bytes. A client remembers sequence plus digest and rejects rollback or same-sequence conflicts. A lower environment or staging key must never become a production trust anchor merely because the same API serves it.
 
-The local demo creates its own persistent signing key and synthetic `.test` family. That key is not a production root. The backend's signer is optional outside demo; an API process without a key cannot publish. Application role checks exist, but OS identity, distinct DB privileges, immutable database grants and a key-isolated publisher deployment remain production gates.
+The local demo creates its own persistent signing key and synthetic `.test` family. That key is not a production root. Outside demo, `APP_ROLE=api` refuses a private publishing key and `APP_ROLE=publisher` requires one. An API process without a key cannot publish. Startup and endpoint role checks exist, but OS identity, distinct DB privileges, immutable database grants and a key-isolated publisher deployment remain production gates.
 
 ## Data and network policy
 

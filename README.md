@@ -1,64 +1,88 @@
 # Web Switcher
 
-Follow a website when its address changes. The long-term design combines a verified migration history, cached shortcuts, and optional owner-signed updates.
+**Follow the website, even when its address changes.**
 
-This branch contains the research plan and an **experimental local-mapping extension**. You enter and approve the destination. Automatic discovery, a public registry, owner verification and the Java backend are still planned. A reachable or similar-looking site is not necessarily the same site.
+Web Switcher is a browser extension and reviewed website-migration registry. It follows exact, explicitly supported old origins to approved destinations, explains the decision, and stops when a mapping is expired, paused, ambiguous, or untrusted. It does not guess a new domain from a website's name or claim to recover every broken link.
 
-- [Complete research and implementation plan](docs/WEB_SWITCHER_PLAN.md)
-- [Prototype scope and trust decision](docs/ADR-001-prototype-scope.md)
-- [Progress, tests and remaining release gates](docs/PROTOTYPE_STATUS.md)
-- [Research experiment instructions](research/README.md)
-
-## Try the prototype
-
-Use a separate development browser profile. This is not a browser-store release.
-
-1. Clone this branch or download its source ZIP.
-2. In Chrome, open `chrome://extensions`; in Edge, open `edge://extensions`.
-3. Enable **Developer mode**, choose **Load unpacked**, and select the repository's `extension` directory. No build or backend is required.
-4. Click Web Switcher in the extensions menu, or open its **Extension options**.
-5. Enter the exact old origin and a current HTTPS origin that you have independently checked. Confirm the destination and grant access to the old origin when the browser asks.
-6. Open the old origin in a tab. A local gate checks the mapping before opening the destination.
-
-An origin consists of the protocol and hostname, for example `https://old-site.com`; it contains no page path, query, or fragment. `http://old-site.com` and `https://old-site.com` are separate sources. Each source requires its own explicit browser permission. The production package excludes IP addresses, private/reserved hostnames and nonstandard ports.
-
-Only top-level GET navigation is eligible. The default opens the destination homepage. The optional path-preserving mode is for known compatible public paths: private information can occur in path segments, and the built-in sensitive-path filter is not exhaustive. Query parameters and fragments are always removed. Recognized account, payment, download and ambiguous links pause and offer an explicit homepage action.
-
-Mappings expire after 1 hour, 24 hours, or 7 days. Expired mappings must be removed and re-added after checking the destination. There are at most 50 mappings. Connections must point directly to their final destination; chained local mappings are rejected. Multiple old origins may point to the same final destination.
+This repository contains the reconstructed **0.2.0 development platform**. It is not a production or browser-store release. See [current implementation and evidence](docs/IMPLEMENTATION_STATUS.md) for tested capabilities and remaining gates, and the preserved [research plan](docs/WEB_SWITCHER_PLAN.md) for the wider roadmap.
 
 ## What is implemented
 
-- Original spider/thread interface with local mapping, pause, remove and activity controls.
-- Exact-origin, GET-only, top-level DNR rules for granted source origins.
-- A packaged gate that checks generation, expiry, pause state, permissions and URL policy at use time.
-- Local configuration reconciliation and a per-tab guard against immediate redirect loops.
-- Up to 20 origin-only routing receipts, with a clear action. Receipts record attempts, not successful page loads.
-- No account, backend calls, analytics, content scripts, browsing-history access or cookie access.
+- **Local MV3 extension:** selected-source permissions, expiring manual mappings, packaged validation gate, pause, strict import/export, local receipts, and a short-lived tab-scoped undo. No account or backend is needed for local mode.
+- **Signed registry support:** ES256 verification, closed schemas, duplicate-key rejection, expiry, rollback/equivocation protection, reviewed-path policies, and family revocations. A production trust anchor is deliberately not supplied.
+- **Java 21 / Spring Boot API:** persistent Flyway/JDBC data, bounded hostname-only lookups/reports, independent review/publishing roles, CSRF-protected sessions, immutable signed releases, and audit records. H2 is available for local demonstration; PostgreSQL 17 is tested.
+- **React public/admin app:** explicit hostname lookup, reports, review queue, publication, audit and privacy/help information.
+- **Isolated Java fetcher:** bounded authenticated probes, DNS/address validation, pinned connection addresses, TLS hostname verification and robots handling. It abstains when the managed proxy cannot establish safe connect-IP pinning.
+- **Experimental owner tools:** offline key generation and passport signing/verification. Owner enrollment, automated domain-control proofs and recovery remain future work.
 
-The gate is web-accessible so links from ordinary pages can reach it. Direct requests are validated; its destination comes from local configuration. The source envelope is removed from the gate's address before asynchronous work.
+A registry signature authenticates a reviewed catalog. It is not proof that every listed website is safe. Reports and search candidates never directly enable browser routing. Demonstrations use reserved synthetic domains, not the example websites mentioned in the research plan.
 
-## Development and tests
+## Run locally
 
-Node 22+ and Python 3 are required for the development tools. CI uses Node 24 and Python 3.12. The extension itself uses packaged browser JavaScript without a build dependency; the eventual React/WXT application remains a separate milestone.
+Use Node 24 LTS, npm, a JDK 21 and Python 3 for packaging. The Maven wrapper pins its distribution and checksum.
 
 ```sh
-npm ci --ignore-scripts
-npm run check
+npm ci
+npm --prefix apps/web ci
+./backend/mvnw -f backend/pom.xml verify
+./backend/mvnw -f fetcher/pom.xml verify
 npm test
-npx playwright install --with-deps chromium --no-shell
-npm run test:research
-npm run test:browser
+npm run check
+npm run build:web
 npm run package
 ```
 
-Playwright 1.56.1 and its Chromium 141 reference build are pinned to reproduce this feasibility exercise. These test dependencies are not shipped in the extension. Run browser tests only against the disposable local fixtures. Passing on this reference build does not establish compatibility with current Chrome/Edge releases.
+In the managed cloud environment, `bash scripts/setup-cloud.sh` installs and validates the same workflow with proxy/TLS trust preserved. Existing checkouts are already isolated; a Git worktree is unnecessary.
 
-Browser tests copy the extension into a temporary directory, enable reserved `.test` fixture origins and pregrant those hosts. The package checker prevents fixture mode from entering the distributed ZIP. Native host-permission prompts, revocation behavior and store builds remain separate manual release gates.
+Start the backend in a dedicated working directory so its generated demo key and database remain outside source:
 
-The prepared GitHub Actions workflow runs the suites with a read-only repository token and publishes the extension ZIP, raw results and fixture screenshots as a 14-day artifact. It has not run: repository publication was blocked by the connected integration's permissions and no authenticated Git push was available. It does not deploy or publish to either browser store. Successful local packaging produces `dist/web-switcher-prototype.zip`; extract it before choosing **Load unpacked**.
+```sh
+mkdir -p /tmp/web-switcher-demo
+cp /absolute/path/to/web-switcher/backend/target/web-switcher-api-0.2.0.jar /tmp/web-switcher-demo/api.jar
+cd /tmp/web-switcher-demo
+java -jar api.jar --spring.profiles.active=demo
+```
 
-## Research result
+In another terminal, from this repository:
 
-Live redirect chains work while the required origins answer. Remembering the verified final destination can survive dead intermediate origins. History cannot reveal an unobserved later move; that requires independent evidence or an authenticated update channel. A signature proves control of a key, not initial ownership, and does not by itself solve a stolen legitimate key.
+```sh
+npm run dev:web
+```
 
-The linked plan records prior art, proposed novelty experiments, backend/frontend architecture, infrastructure, deployment costs and the full backlog. Product-wide tasks remain open unless their complete acceptance criteria have actually been demonstrated.
+The web app runs on port 5173 and proxies API requests to port 8080. The explicit demo profile provides `demo-reviewer` and `demo-publisher`, both with the intentionally public password `demo-password`. These accounts do not exist in production. Demo data persists in the backend process's `data/` working directory.
+
+Alternatively use `docker compose -f infra/compose/local.yml up --build` for the loopback-only demo stack on port 8088. See [deployment instructions](docs/DEPLOYMENT.md), including managed proxy/CA builds.
+
+## Try the extension
+
+`npm run package` creates `dist/web-switcher/` and `dist/web-switcher-0.2.0.zip`. In a browser profile that permits development extensions, enable Developer mode in Chrome/Edge's extensions page and load the unpacked directory. The ZIP must be extracted before loading.
+
+Add an old origin and an independently checked current HTTPS origin. Access is requested for that source only. Homepage routing is the default; preserve a path only where you know the structures are compatible. Queries and fragments are removed; sensitive links require a fresh confirmation. Cookies, sessions and credentials never migrate between domains.
+
+A default build trusts no remote registry. To package a reviewed registry, provide a file containing a `kid -> public ES256 JWK` map through `WS_REGISTRY_KEYS_FILE`, plus an owned fixed HTTPS endpoint through `WS_REGISTRY_URL`, when running `npm run package`. The packaging step validates public keys, rejects private key material and adds only the endpoint's exact host permission. Never ship demo trust anchors as production identities.
+
+## Validation
+
+```sh
+npm test                              # policy, schema, crypto and mocked worker tests
+npm run check                         # manifest, fixture exclusion, syntax and CSP
+npm --prefix apps/web run test:browser # Chromium UI contract test; API mocked
+npm run test:http                      # live demo API + Java/WebCrypto interoperability
+npm run test:browser                   # real unpacked-extension navigation harness
+bash infra/backup/test.sh              # backup failure/restore guard tests
+```
+
+The HTTP demo test mutates **synthetic demo data**, including a revocation; use a fresh isolated demo working directory for each full run. Set `CHROMIUM_PATH` for an installed browser where required. The real extension navigation harness requires a browser/environment that allows unpacked extensions. A managed-browser policy block is a failed readiness gate, not a passing test.
+
+## Further documentation
+
+- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
+- [API contract](docs/API.md)
+- [Security, privacy and reporting](docs/SECURITY.md)
+- [Deployment, configuration and backups](docs/DEPLOYMENT.md)
+- [Release checklist](docs/RELEASE.md)
+- [Recovery checkpoint](docs/RECOVERY_CHECKPOINT.md)
+- [Fetcher contract and limits](fetcher/README.md)
+- [Owner signing tools](packages/security/README.md)
+
+Public deployment, production identities/keys, private egress enforcement, independent database privileges, native Chrome/Edge acceptance, browser stores, owner pilots and research effectiveness measurements remain explicit release gates. GitHub workflow definitions do not establish that CI has run.

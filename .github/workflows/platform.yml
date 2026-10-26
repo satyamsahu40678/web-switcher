@@ -80,9 +80,15 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: |
+          npm ci --no-audit --no-fund
+          npm --prefix apps/web ci --no-audit --no-fund
       - run: npx playwright install --with-deps chromium --no-shell
-      - run: npm run test:browser
+      - name: Extension and web UI browser acceptance
+        run: |
+          export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
+          npm run test:browser
+          npm --prefix apps/web run test:browser
       - name: Preserve current browser results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -91,3 +97,51 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
           path: test-results/
+  live-api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: npm ci --no-audit --no-fund
+      - run: ./backend/mvnw -f backend/pom.xml --batch-mode --no-transfer-progress -DskipTests package
+      - name: Verify the live Java API and browser-compatible signature contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          demo_dir="$(mktemp -d "$RUNNER_TEMP/web-switcher-api-XXXXXXXX")"
+          api_jar="$GITHUB_WORKSPACE/backend/target/web-switcher-api-0.2.0.jar"
+          mkdir -p test-results
+          (
+            cd "$demo_dir"
+            exec java -jar "$api_jar" --spring.profiles.active=demo --server.address=127.0.0.1 --server.port=8080
+          ) > test-results/live-api.log 2>&1 &
+          demo_pid=$!
+          trap 'kill "$demo_pid" 2>/dev/null || true; wait "$demo_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:8080/health/ready >/dev/null; then
+              break
+            fi
+            kill -0 "$demo_pid" 2>/dev/null || { cat test-results/live-api.log; exit 1; }
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:8080/health/ready >/dev/null
+          node tests/http-demo.mjs
+      - name: Preserve live API evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-api-acceptance-results
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            test-results/http-demo.json
+            test-results/live-api.log

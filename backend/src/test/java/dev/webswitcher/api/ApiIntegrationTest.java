@@ -62,14 +62,21 @@ class ApiIntegrationTest {
   login("demo-publisher");var release=post("/v1/admin/releases","{}",csrf());assertEquals(200,release.statusCode(),release.body());assertEquals(2,json(release.body()).get("sequence"));
   assertEquals("verified",json(post("/v1/lookups","{\"hostname\":\"old.project.test\"}",null).body()).get("status"));assertEquals(200,get("/v1/catalog/1").statusCode());assertTrue(get("/v1/admin/audit").body().contains("CATALOG_PUBLISHED"));logout();
  }
- @Test @Order(4) void revocationPayloadUsesBoundedPrecisionAndKnownFamily()throws Exception{
+ @Test @Order(4) void conflictingReviewsCannotPublishAndPublishedReviewIsImmutable()throws Exception{
+  var ids=new ArrayList<String>();
+  for(String target:List.of("one.collision.test","two.collision.test")){var response=post("/v1/reports","{\"sourceHost\":\"old.collision.test\",\"proposedHost\":\""+target+"\",\"reason\":\"Conflicting controlled candidate evidence\"}",null);assertEquals(202,response.statusCode(),response.body());ids.add(json(response.body()).get("id").toString());}
+  login("demo-reviewer");for(String id:ids)assertEquals(200,post("/v1/admin/candidates/"+id+"/decisions","{\"version\":0,\"decision\":\"approved\",\"reason\":\"Independent controlled test continuity review\"}",csrf()).statusCode());logout();
+  login("demo-publisher");var failed=post("/v1/admin/releases","{}",csrf());assertEquals(409,failed.statusCode(),failed.body());assertEquals("unknown",json(post("/v1/lookups","{\"hostname\":\"old.collision.test\"}",null).body()).get("status"));logout();
+  login("demo-reviewer");for(String id:ids)assertEquals(200,post("/v1/admin/candidates/"+id+"/decisions","{\"version\":1,\"decision\":\"quarantined\",\"reason\":\"Conflicting evidence requires manual investigation\"}",csrf()).statusCode());logout();
+ }
+ @Test @Order(5) void revocationPayloadUsesBoundedPrecisionAndKnownFamily()throws Exception{
   login("demo-publisher");var response=post("/v1/admin/families/demo-docs/revoke","{\"reason\":\"Controlled revocation precision regression\"}",csrf());assertEquals(200,response.statusCode(),response.body());
   String[] parts=get("/v1/catalog/current").body().split("\\.");var payload=json(new String(Base64.getUrlDecoder().decode(parts[1]),StandardCharsets.UTF_8));
   var families=(List<?>)payload.get("families");assertTrue(families.stream().anyMatch(f->((Map<?,?>)f).get("id").equals("demo-docs")));
   var revoked=(Map<?,?>)((List<?>)payload.get("revocations")).getFirst();assertTrue(revoked.get("revokedAt").toString().matches("[0-9T:.-]+(?:Z)"));String time=revoked.get("revokedAt").toString();assertTrue(!time.contains(".")||time.substring(time.indexOf('.')+1,time.length()-1).length()<=3,time);
   logout();
  }
- @Test @Order(5) void hourlyBudgetsAreEnforced()throws Exception{
+ @Test @Order(6) void hourlyBudgetsAreEnforced()throws Exception{
   int limited=0;for(int i=0;i<35;i++){var response=post("/v1/lookups","{\"hostname\":\"unknown.example\"}",null);if(response.statusCode()==429){limited++;assertTrue(response.headers().firstValue("Retry-After").isPresent());}}
   assertTrue(limited>0);
  }

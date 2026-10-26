@@ -40,7 +40,7 @@ class Security {
   if(!demo){Policy.origin(publicOrigin);if(loopback)throw new IllegalStateException("DEV_ALLOW_LOOPBACK is forbidden in production.");}
   http.authorizeHttpRequests(a->a
    .requestMatchers("/health/**","/v1/session","/v1/catalog/**","/v1/keys","/v1/families/**","/v1/lookups/**","/v1/reports","/error","/","/index.html","/assets/**","/oauth2/**","/login/oauth2/**").permitAll()
-   .requestMatchers("/v1/admin/releases").hasRole("PUBLISHER")
+   .requestMatchers(org.springframework.http.HttpMethod.POST,"/v1/admin/releases").hasRole("PUBLISHER")
    .requestMatchers("/v1/admin/families/*/revoke").hasRole("PUBLISHER")
    .requestMatchers("/v1/admin/candidates/*/decisions").hasRole("REVIEWER")
    .requestMatchers("/v1/admin/**").hasAnyRole("REVIEWER","PUBLISHER")

@@ -20,7 +20,7 @@ class Api {
  @GetMapping("/v1/session") Map<String,Object> session(Authentication auth,HttpServletRequest request){
   CsrfToken token=(CsrfToken)request.getAttribute(CsrfToken.class.getName());
   boolean signed=auth!=null&&auth.isAuthenticated()&&!(auth instanceof AnonymousAuthenticationToken);
-  var result=new LinkedHashMap<String,Object>();result.put("authenticated",signed);result.put("username",signed?auth.getName():null);result.put("roles",signed?auth.getAuthorities().stream().map(a->a.getAuthority().replace("ROLE_","")).sorted().toList():List.of());result.put("csrfToken",token.getToken());result.put("csrfHeader",token.getHeaderName());result.put("demo",demo);if(!demo)result.put("loginUrl","/oauth2/authorization/web");return result;
+  var result=new LinkedHashMap<String,Object>();result.put("authenticated",signed);result.put("username",signed?auth.getName():null);result.put("roles",signed?auth.getAuthorities().stream().filter(a->a.getAuthority().startsWith("ROLE_")).map(a->a.getAuthority().replace("ROLE_","")).sorted().toList():List.of());result.put("csrfToken",token.getToken());result.put("csrfHeader",token.getHeaderName());result.put("demo",demo);if(!demo)result.put("loginUrl","/oauth2/authorization/web");return result;
  }
  @GetMapping("/v1/keys") Map<String,Object> keys(){return Map.of("keys",List.of(signer.publicJwk()));}
  @GetMapping(value={"/v1/catalog/current","/v1/catalog/{sequence}"},produces="application/jose") ResponseEntity<String> catalog(@PathVariable(required=false)Long sequence,@RequestHeader(value="If-None-Match",required=false)String etag){

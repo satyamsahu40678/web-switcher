@@ -4,12 +4,15 @@ set -eu
 build_tmp="$(mktemp -d)"
 trap 'rm -rf -- "$build_tmp"' EXIT HUP INT TERM
 build_settings="$build_tmp/settings.xml"
+build_apt_config="$build_tmp/apt.conf"
+printf '%s\n' '// Session-only transport configuration.' > "$build_apt_config"
 printf '%s\n' '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"></settings>' > "$build_settings"
 if [ -s /run/secrets/proxy_ca ]; then
   cat /etc/ssl/certs/ca-certificates.crt /run/secrets/proxy_ca > "$build_tmp/ca-bundle.pem"
   export CURL_CA_BUNDLE="$build_tmp/ca-bundle.pem"
   printf 'ca_certificate = %s\n' "$build_tmp/ca-bundle.pem" > "$build_tmp/wgetrc"
   export WGETRC="$build_tmp/wgetrc"
+  printf 'Acquire::https::CaInfo "%s";\n' "$build_tmp/ca-bundle.pem" >> "$build_apt_config"
   cp "$JAVA_HOME/lib/security/cacerts" "$build_tmp/cacerts"
   keytool -importcert -noprompt -alias web-switcher-build-proxy -file /run/secrets/proxy_ca \
     -keystore "$build_tmp/cacerts" -storepass changeit >/dev/null
@@ -28,10 +31,18 @@ if [ -n "$build_proxy" ]; then
   esac
   case "$build_host" in ''|*[!A-Za-z0-9.-]*) echo 'Unsupported build proxy hostname.' >&2; exit 2;; esac
   case "$build_port" in ''|*[!0-9]*) echo 'Unsupported build proxy port.' >&2; exit 2;; esac
+  printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' "$build_proxy" "$build_proxy" >> "$build_apt_config"
   cat > "$build_settings" <<SETTINGS
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
   <proxies><proxy><id>environment-build-proxy</id><active>true</active><protocol>http</protocol><host>$build_host</host><port>$build_port</port><nonProxyHosts>localhost|127.0.0.1</nonProxyHosts></proxy></proxies>
 </settings>
 SETTINGS
+fi
+# The wrapper pins the ZIP checksum. Without unzip it would select a tarball,
+# whose bytes correctly fail that ZIP checksum. Install the matching extractor.
+if ! command -v unzip >/dev/null 2>&1; then
+  APT_CONFIG="$build_apt_config" apt-get update
+  APT_CONFIG="$build_apt_config" apt-get install --yes --no-install-recommends unzip
+  rm -rf /var/lib/apt/lists/*
 fi
 ./backend/mvnw -f backend/pom.xml --settings "$build_settings" --batch-mode --no-transfer-progress -DskipTests package

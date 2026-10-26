@@ -1,6 +1,6 @@
 # Implementation status and evidence
 
-Updated 26 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+Updated 27 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
 
 ## Recovery and current scope
 
@@ -12,7 +12,7 @@ The current target is a useful local extension plus a runnable reviewed-registry
 
 | Plan area | Source/evidence location | Interpretation |
 | --- | --- | --- |
-| P0/P1 local routing and gate | `extension/`, `tests/core.test.mjs`, `tests/browser.mjs` | Current test outcomes must be recorded below; native Chrome/Edge acceptance remains separate |
+| P0/P1 local routing and gate | `extension/`, `tests/core.test.mjs`, `tests/browser.mjs` | Current outcomes recorded below; native Chrome/Edge acceptance remains separate |
 | UI and manual settings | `extension/options.*`, `extension/popup.*`, `apps/web/` | Product surfaces; accessibility across real devices remains a release gate |
 | BE review/publish/auth/persistence | `backend/` migrations, source and tests | Pending decisions separate from published releases; production process/DB role isolation not implied |
 | SIG schemas/ES256/freshness/rollback | `packages/security/`, Java signer and compatibility checks | Trust anchor installation and production key lifecycle need operator configuration |
@@ -23,24 +23,25 @@ The current target is a useful local extension plus a runnable reviewed-registry
 
 ## Fresh validation ledger
 
-Final integration must replace the pending entries with actual current-run results; the older checkpoint's counts do not apply to reconstructed code.
+The following results belong to the reconstructed source and current validation run. Historical checkpoint counts are not reused.
 
 | Check | Current outcome |
 | --- | --- |
 | Prototype source archive checksums | Verified before restoration |
-| Pure routing/configuration tests | Pending final integration result |
-| Strict catalog/passport security tests | Pending final integration result |
-| Java API/database/auth/review tests | Pending final integration result |
-| Java fetcher/SSRF/bounds tests | Pending final integration result |
-| Java-to-browser signature compatibility | Pending final integration result |
-| React TypeScript and production build | Pending final integration result |
-| Current Chromium navigation suite | Pending final integration result |
-| Manifest/syntax/package inspection | Pending final integration result |
+| Routing/configuration and mocked background/adapter tests | 54 passed (26 core, 17 worker, 11 catalog-adapter); simulated browser APIs are not native browser acceptance |
+| Strict catalog/passport security tests | 23 passed, including offline owner CLI; combined JavaScript total 77 with zero skips/failures |
+| Java API/database/auth/review tests | 11 passed against H2 and the same 11 passed against fresh PostgreSQL 17; final parser hardening and setup verification passed |
+| Java fetcher/SSRF/bounds tests | 65 passed with zero skips/failures; authenticated loopback fixtures and injected safe transports, not deployed public egress |
+| Java-to-browser signature compatibility | Live Java ES256 catalogs verified with the browser-compatible WebCrypto module; modified signatures rejected; full HTTP demo passed 11 checks including publication/revocation |
+| React TypeScript and production build | Passed; actual Chromium mocked API-contract suite and read-only live API/login UI suite passed; desktop screenshots inspected and mobile overflow check passed |
+| Current Chromium extension navigation suite | Blocked at extension launch: managed Chromium ExtensionInstallBlocklist disallows development extensions. No navigation pass claimed |
+| Manifest/syntax/package inspection | Passed; dist/web-switcher-0.2.0.zip built with fixture mode disabled, no embedded private keys or default remote trust |
 | Backup/restore failure guards | Six hermetic producer/encryption/target guard checks passed; no live database or cryptographic restore claim |
 | Local Compose syntax | `docker compose -f infra/compose/local.yml config --quiet` passed |
-| Container build/runtime | Not yet executed |
-| PostgreSQL privileges/restore | Not yet executed |
+| Container build/runtime | Web/API images built with verified TLS/artifacts and optional session CA secret; loopback Caddy static/security-header checks and 11 live API checks passed, plus immutable catalog persistence after API restart (`test-results/container-http-demo.json`) |
+| PostgreSQL production privileges/restore | Not executed; the functional PostgreSQL test uses a disposable development role and does not establish privilege separation or encrypted restore |
 | Actual Chrome/Edge native permissions and stores | Not executed |
+| Reusable cloud setup script | scripts/setup-cloud.sh executed successfully end to end after correcting the npm cache to a writable directory; install_script and start_skill saved in the environment draft |
 | GitHub publication and CI | Push check currently returns HTTP 403 despite the configured token; no remote/CI success claimed |
 
 ## Outstanding gates

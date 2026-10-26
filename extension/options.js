@@ -56,6 +56,21 @@ async function render() {
     : registry?.error ? `Registry unavailable: ${registry.error}`
       : registry?.expiresAt ? `Catalog expires ${new Date(registry.expiresAt).toLocaleString()}.${Array.isArray(registry.families) ? ` ${registry.families.length} families included.` : ''}`
         : 'Import a signed catalog from your configured publisher. No catalog has been activated.';
+  const registrySources = document.querySelector('#registry-sources');
+  registrySources.replaceChildren();
+  for (const alias of registry?.aliases || []) {
+    const card = element('article', undefined, 'mapping');
+    const granted = grantedOrigins.includes(alias.sourceOrigin);
+    card.append(element('h3', alias.sourceOrigin));
+    card.append(element('p', `→ ${alias.destinationOrigin}`, 'destination'));
+    card.append(element('p', `${alias.trustClass === 'owner_verified' ? 'Owner verified' : 'Registry reviewed'} · Expires ${new Date(alias.validUntil).toLocaleString()}`, 'hint'));
+    card.append(element('p', 'Source access is optional. Revoking it also pauses any local mapping for this same origin.', 'hint'));
+    card.append(action(granted ? 'Revoke source access' : 'Grant source access', async () => {
+      if (granted) await chrome.permissions.remove({origins: [permissionFor(alias.sourceOrigin)]});
+      else if (!await chrome.permissions.request({origins: [permissionFor(alias.sourceOrigin)]})) throw new Error('Source access was not granted. Registry routing remains inactive for this origin.');
+    }));
+    registrySources.append(card);
+  }
   const list = document.querySelector('#mapping-list');
   list.replaceChildren();
   document.querySelector('#empty').hidden = config.mappings.length > 0;

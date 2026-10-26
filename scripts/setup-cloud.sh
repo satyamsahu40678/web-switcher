@@ -2,6 +2,8 @@
 set -euo pipefail
 repo_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_dir"
+export npm_config_cache=${npm_config_cache:-/workspace/.cache/web-switcher-npm}
+mkdir -p "$npm_config_cache"
 # Cloud tasks already have isolated checkouts; do not create a worktree.
 npm ci --no-audit --no-fund
 npm --prefix apps/web ci --no-audit --no-fund

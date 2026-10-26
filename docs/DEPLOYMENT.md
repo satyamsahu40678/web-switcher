@@ -45,9 +45,23 @@ docker compose -f infra/compose/local.yml up --build
 
 The demo web port is bound to host loopback port 8088. The API has no published port and its synthetic H2 state is retained in a named volume. The internal application network denies ordinary external egress. This Compose stack is a development example, not production infrastructure. Container image tags must be resolved/pinned to reviewed immutable digests for a release.
 
+The web and API images were built and this stack was exercised in the managed environment. The live API/signature/authentication/review/publication/revocation suite passed through Caddy, static React assets/security headers were served, and published catalog bytes remained identical after an API container restart. Current evidence is in `test-results/container-http-demo.json`; these are loopback synthetic-data checks, without production TLS/OIDC or an egress-isolated public crawler. Caddy listens on unprivileged port 8080 with its upstream binary's unnecessary bind file capability removed, allowing the service to retain `cap_drop: ALL`. The internal `api` hostname is appended to `NO_PROXY` while inherited Internet proxy settings remain intact.
+
 The fetcher is deliberately excluded from the default stack. See `fetcher/README.md` for its independent internal token/serve contract. Do not attach it to a database network, inject application/cloud credentials, or publish its port. An external egress firewall/proxy is required before enabling real crawling; Docker network names alone do not establish that boundary.
 
 In a managed Codex cloud build, retain the session proxy and CA trust as described by the cloud runtime skill. Do not bypass TLS verification, disable artifact checksums, or assume host proxy settings automatically reach build/runtime containers.
+
+Both Dockerfiles accept an optional BuildKit secret named `proxy_ca`. The npm install extends Node's trust only for that step. The Java build makes a temporary combined CA bundle, copies the JDK truststore, imports the session CA, and supplies temporary Maven proxy settings; these files are removed in the same build step and are not copied to runtime images. Ordinary builds without that secret use normal system trust. The Maven ZIP checksum stays enabled; the build installs `unzip` so the wrapper does not select a different tarball artifact.
+
+For this managed cloud session, add the tested secret override and put only Buildx's writable state in `/tmp`, while keeping existing Docker registry configuration intact:
+
+```sh
+BUILDX_CONFIG=/tmp/web-switcher-buildx docker --host=unix:///var/run/docker.sock compose \
+  -f infra/compose/local.yml -f infra/compose/cloud-build.yml build
+docker --host=unix:///var/run/docker.sock compose -f infra/compose/local.yml up -d --no-build
+```
+
+The override reads the provided `CODEX_PROXY_CERT` file path without putting its contents in build arguments or image layers. Clear inherited Docker endpoint/context/TLS selectors before these commands if they select another daemon, as instructed by the runtime skill. The local demo has no outbound HTTPS requirement after build; a runtime service that does need HTTPS requires its own read-only CA mount and matching trust configuration.
 
 ## Production configuration
 
@@ -57,13 +71,14 @@ Do not use the demo Spring profile. The API requires:
 | --- | --- |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD` | PostgreSQL connection with least-privilege application role |
 | `APP_PUBLIC_ORIGIN` | Owned HTTPS API/admin origin |
+| `APP_ROLE` | `api` (default, forbids a private publishing key) or `publisher` (requires one) |
 | `ADMIN_ALLOWED_SUBJECTS`, `PUBLISHER_ALLOWED_SUBJECTS` | Explicit comma-separated OIDC subject IDs, separate roles |
 | Standard `SPRING_SECURITY_OAUTH2_CLIENT_*` properties | Provider issuer, client ID/secret and `openid,profile` scope |
 | `PUBLISHING_PRIVATE_KEY_FILE`, `PUBLISHING_KEY_ID` | Publisher-only PKCS8 DER key file and public key identifier |
 
 For a provider named `web`, configure `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_WEB_CLIENT_ID`, `..._CLIENT_SECRET`, `..._SCOPE=openid,profile`, and `SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_WEB_ISSUER_URI`; consult Spring's OIDC configuration documentation for provider registration. Enable secure HTTPS session cookies in production. Store secret values in the deployment's secret manager, not source or frontend environment variables.
 
-The public API process should omit the signing key. Its publication endpoint then fails closed with signer unavailable. A separate key-holding deployment must expose publication only to authorized operators and use appropriately separated DB privileges. This codebase provides endpoint role checks but does not by itself create OS/process isolation or immutable PostgreSQL grants. Complete and verify those controls before public deployment.
+The public API process must use `APP_ROLE=api` and omit the signing key; startup rejects a key supplied to that role. Its publication endpoint fails closed with signer unavailable. A separate `APP_ROLE=publisher` process requires a key and must expose publication only to authorized operators and use appropriately separated DB privileges. These startup and endpoint role checks do not by themselves create OS/process isolation or immutable PostgreSQL grants. Complete and verify those controls before public deployment.
 
 Staging and production need distinct databases, keys, origins, browser builds, OIDC clients and audit/backup targets. Production trust anchors must be distributed out of band; `/v1/keys` is demo-only. Do not configure a production extension to trust arbitrary keys fetched from the same untrusted network source as its catalog.
 
