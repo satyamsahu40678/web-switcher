@@ -9,7 +9,12 @@ const temp = await mkdtemp(path.join(os.tmpdir(), 'web-switcher-browser-'));
 const extension = path.join(temp, 'extension');
 const profile = path.join(temp, 'profile');
 await cp('extension', extension, {recursive: true});
-await writeFile(path.join(extension, 'build-config.js'), 'export const ALLOW_TEST_ORIGINS = true;\n');
+// Keep the complete module contract: the service worker also imports registry
+// configuration. Replacing the entire file with one fixture flag prevents its
+// ES module from instantiating and misleadingly times out at worker startup.
+const fixtureConfig = await readFile(path.join(extension, 'build-config.js'), 'utf8');
+assert.match(fixtureConfig, /export const ALLOW_TEST_ORIGINS = false;/, 'The source build must never already be in fixture mode.');
+await writeFile(path.join(extension, 'build-config.js'), fixtureConfig.replace('export const ALLOW_TEST_ORIGINS = false;', 'export const ALLOW_TEST_ORIGINS = true;'));
 const manifest = JSON.parse(await readFile(path.join(extension, 'manifest.json'), 'utf8'));
 // Pregranted fixtures avoid a native permission dialog. Permission onboarding is
 // explicitly NOT covered by this suite. The distributed extension has no grants.
