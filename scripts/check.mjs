@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 const manifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
 assert.equal(manifest.manifest_version, 3);
-assert.deepEqual(manifest.permissions, ['storage', 'declarativeNetRequestWithHostAccess']);
+assert.deepEqual(manifest.permissions, ['storage', 'declarativeNetRequestWithHostAccess', 'activeTab', 'alarms']);
 assert.equal(manifest.host_permissions, undefined, 'Production must not start with granted host access.');
 assert.equal(manifest.content_scripts, undefined);
 assert.equal(manifest.externally_connectable, undefined);

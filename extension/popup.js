@@ -52,9 +52,9 @@ async function render() {
     document.querySelector('#popup-title').textContent = currentOrigin ? 'No connection saved.' : 'Keep the thread.';
     document.querySelector('#popup-message').textContent = currentOrigin ? 'No local replacement is configured for this origin. Add one only after checking where the website moved.' : 'Open an HTTP or HTTPS website to check its local mapping, or manage your connections.';
   }
-  document.querySelector('#add-mapping').textContent = currentOrigin && !shownMapping ? 'Add a local connection ↗' : 'Manage connections ↗';
+  document.querySelector('#add-mapping').textContent = currentOrigin && !shownMapping ? 'Add a local connection →' : 'Manage connections →';
   document.querySelector('#clear').hidden = !receipts.length;
-  undoReceipt = receipts.find(receipt => receipt.id && receipt.canUndo && (receipt.tabId === undefined || receipt.tabId === currentTab?.id));
+  undoReceipt = Number.isInteger(currentTab?.id) ? receipts.find(receipt => receipt.destinationOrigin === currentOrigin && Date.now() - receipt.at < 120000) : undefined;
   document.querySelector('#undo').hidden = !undoReceipt;
 }
 function openSettings() {
@@ -76,7 +76,7 @@ document.querySelector('#clear').addEventListener('click', async () => {
 });
 document.querySelector('#undo').addEventListener('click', async () => {
   if (!undoReceipt) return;
-  try { await request({type: 'undo', receiptId: undoReceipt.id}); await render(); announce('Original address reopened with a temporary extension bypass. The website may still redirect itself.'); }
+  try { await request({type: 'undo', receiptId: String(undoReceipt.at), tabId: currentTab.id}); await render(); announce('Original address reopened with a temporary extension bypass. The website may still redirect itself.'); }
   catch (error) { announce(error.message, true); }
 });
 document.querySelector('#open-current').addEventListener('click', async () => {

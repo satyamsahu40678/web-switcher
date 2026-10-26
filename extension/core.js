@@ -1,4 +1,6 @@
-export const MAX_MAPPINGS = 50;
+export const MAX_MAPPINGS = 250;
+export const MAX_LOCAL_MAPPINGS = 50;
+export const RECEIPT_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const MAX_URL_LENGTH = 8192;
 export const MAX_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
 export const LOOP_WINDOW_MS = 15000;
@@ -44,7 +46,7 @@ export function validateConfig(config, options = {}) {
     if (originOf(mapping.sourceOrigin, options) !== mapping.sourceOrigin || originOf(mapping.destinationOrigin, {...options, target: true}) !== mapping.destinationOrigin) throw new Error('Origins must be normalized.');
     if (sources.has(mapping.sourceOrigin) || mapping.sourceOrigin === mapping.destinationOrigin) throw new Error('Each source needs a distinct destination and only one mapping.');
     if (!['homepage', 'preserve'].includes(mapping.pathPolicy)) throw new Error('Choose a supported path policy.');
-    if (!Number.isSafeInteger(mapping.createdAt) || !Number.isSafeInteger(mapping.expiresAt) || mapping.createdAt < 0 || mapping.expiresAt - mapping.createdAt < 3600000 || mapping.expiresAt - mapping.createdAt > MAX_VALIDITY_MS) throw new Error('Mapping validity must be between one hour and seven days.');
+    if (!Number.isSafeInteger(mapping.createdAt) || !Number.isSafeInteger(mapping.expiresAt) || mapping.createdAt < 0 || mapping.expiresAt - mapping.createdAt < (mapping.provenance === 'registry' ? 1 : 3600000) || mapping.expiresAt - mapping.createdAt > MAX_VALIDITY_MS) throw new Error('Mapping validity must be between one hour and seven days.');
     ids.add(mapping.id);
     sources.add(mapping.sourceOrigin);
   }
@@ -129,4 +131,29 @@ export function blocked(reason) { return {status: 'blocked', reason}; }
 
 export function loopDetected(previous, now) {
   return previous !== undefined && (now < previous || now - previous < LOOP_WINDOW_MS);
+}
+
+function closed(value, fields, name) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) throw new Error(`Unexpected fields in ${name}.`);
+}
+
+// Portable settings can express only local user decisions. Trust, keys, receipts,
+// browser permissions and catalog rollback memory are never portable settings.
+export function importSettings(value, generation, options = {}) {
+  closed(value, ['schemaVersion', 'paused', 'mappings'], 'settings');
+  if (!Array.isArray(value.mappings) || value.mappings.length > MAX_LOCAL_MAPPINGS) throw new Error('Import at most 50 local mappings.');
+  for (const mapping of value.mappings) {
+    closed(mapping, ['id', 'sourceOrigin', 'destinationOrigin', 'pathPolicy', 'enabled', 'createdAt', 'expiresAt'], 'local mapping');
+    if (typeof mapping.id !== 'string' || mapping.id.startsWith('registry-')) throw new Error('Registry mapping identifiers cannot be imported as local settings.');
+  }
+  return validateConfig({...structuredClone(value), generation}, options);
+}
+
+export function pruneReceipts(receipts, now) {
+  if (!Array.isArray(receipts)) return [];
+  return receipts.filter(receipt => receipt && typeof receipt === 'object' && typeof receipt.sourceOrigin === 'string' && typeof receipt.destinationOrigin === 'string' && Number.isSafeInteger(receipt.at) && receipt.at <= now && now - receipt.at < RECEIPT_RETENTION_MS).slice(0, 20);
+}
+
+export function confirmationMatches(result, expectedUrl) {
+  return result?.status === 'blocked' && ['manual', 'confirmation'].includes(result.reason) && typeof expectedUrl === 'string' && result.homepage === expectedUrl;
 }

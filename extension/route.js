@@ -6,6 +6,7 @@ const descriptions = {
   unknown: 'There is no saved mapping for this request.',
   expired: 'This mapping needs to be verified again. Its validity period has ended or the clock moved backwards.',
   invalid: 'This address could not be safely interpreted.',
+  confirmation: 'This registry-reviewed move requires your confirmation. Check the destination below. Verification of a relationship is not a guarantee that a website is safe.',
   manual: 'This link may contain account information, a download, or an ambiguous path. You can choose the saved destination homepage without transferring the original path or parameters.',
   permission: 'Access to this source origin is no longer granted.',
   loop: 'A recent switch in this tab was stopped to prevent a redirect loop. Check the destination before trying again.'
@@ -24,10 +25,22 @@ try {
     document.querySelector('#title').textContent = 'Switch paused';
     document.querySelector('#message').textContent = descriptions[result.reason] || descriptions.invalid;
     document.body.dataset.reason = result.reason;
-    if (result.reason === 'manual' && result.homepage) {
+    if (['manual', 'confirmation'].includes(result.reason) && result.homepage) {
       const button = document.querySelector('#homepage');
       button.hidden = false;
-      button.addEventListener('click', () => location.replace(result.homepage), {once: true});
+      if (result.reason === 'confirmation') button.textContent = 'Open reviewed destination';
+      const preview = document.createElement('p'); preview.textContent = result.homepage; button.before(preview);
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const checked = await chrome.runtime.sendMessage({type: 'confirmRoute', envelope, expectedUrl: result.homepage});
+          if (!checked?.ok || checked.data?.status !== 'ready' || checked.data.url !== result.homepage) throw new Error();
+          location.replace(checked.data.url);
+        } catch {
+          document.querySelector('#message').textContent = 'The destination or policy changed. Reopen the original link and review the current mapping.';
+          document.body.dataset.reason = 'changed';
+        }
+      }, {once: true});
     }
   }
 } catch {

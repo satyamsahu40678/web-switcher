@@ -1,0 +1,34 @@
+server:
+  address: ${BIND_ADDRESS:127.0.0.1}
+  port: ${PORT:8080}
+  servlet:
+    session:
+      timeout: 20m
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: true
+  tomcat:
+    max-http-form-post-size: 32KB
+spring:
+  application:
+    name: web-switcher-api
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+  flyway:
+    enabled: true
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+web-switcher:
+  demo: false
+  runtime-role: ${APP_ROLE:api}
+  public-origin: ${APP_PUBLIC_ORIGIN:}
+  publishing-private-key: ${PUBLISHING_PRIVATE_KEY_FILE:}
+  publishing-key-id: ${PUBLISHING_KEY_ID:}
+  admin-subjects: ${ADMIN_ALLOWED_SUBJECTS:}
+  publisher-subjects: ${PUBLISHER_ALLOWED_SUBJECTS:}
+  lookup-budget: 100
+  report-budget: 30

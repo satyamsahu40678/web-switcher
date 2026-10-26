@@ -47,6 +47,7 @@ const gateUrl = () => `chrome-extension://${extensionId}/route.html`;
 async function launch() {
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true,
+    ...(process.env.CHROMIUM_PATH ? {executablePath: process.env.CHROMIUM_PATH} : {}),
     viewport: {width: 1280, height: 1000},
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--no-proxy-server', '--host-resolver-rules=MAP *.test 127.0.0.1']
   });

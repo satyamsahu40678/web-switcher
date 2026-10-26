@@ -40,7 +40,7 @@
             <p class="hint">Queries and fragments are removed. Keep paths only when they are public and compatible; private data can occur in a path.</p>
             <div id="mapping-preview" class="mapping-preview" aria-live="polite" hidden></div>
             <label class="check-label"><input id="verified" type="checkbox" required><span>I have checked that this destination is the site I intend to visit.</span></label>
-            <button id="save" type="submit" class="primary">Connect these addresses <span aria-hidden="true">↗</span></button>
+            <button id="save" type="submit" class="primary">Connect these addresses <span aria-hidden="true">→</span></button>
             <p class="hint">Your browser will ask for access to the old origin. Protocol and hostname must match exactly.</p>
           </form>
         </section>
@@ -48,7 +48,7 @@
           <div class="section-number">02 / YOUR CONNECTIONS</div>
           <div class="section-title"><h2 id="connections-title">Saved mappings</h2><span id="count" class="count">0</span></div>
           <div id="mapping-list" class="mapping-list"></div>
-          <div id="empty" class="empty"><div class="empty-mark" aria-hidden="true">↗</div><h3>A new thread starts here</h3><p>Add your first pair of addresses.<br>They stay under your control.</p></div>
+          <div id="empty" class="empty"><div class="empty-mark" aria-hidden="true">→</div><h3>A new thread starts here</h3><p>Add your first pair of addresses.<br>They stay under your control.</p></div>
         </section>
       </div>
       <section class="card activity" aria-labelledby="activity-title">
@@ -72,6 +72,18 @@
             <p class="muted">No account or telemetry. The activity and settings on this page stay in this browser.</p>
             <button id="clear-local" class="text-button danger" type="button">Delete all local mappings &amp; activity</button>
           </div>
+        </div>
+      </section>
+      <section class="card registry" aria-labelledby="registry-title">
+        <div class="section-number">05 / SIGNED REGISTRY</div>
+        <div class="section-title"><h2 id="registry-title">A separate thread of evidence</h2><span id="registry-status" class="count">Reading configuration…</span></div>
+        <p class="muted">A registry signature identifies a configured publisher. It does not turn an unreviewed destination into proof of website identity or safe content. Your local mappings remain user configured.</p>
+        <p id="registry-summary" class="hint" role="status"></p>
+        <div id="registry-controls" hidden>
+          <label for="catalog-jws">Signed catalog (compact JWS)</label>
+          <textarea id="catalog-jws" rows="4" maxlength="1048576" autocomplete="off" spellcheck="false" placeholder="Paste a signed catalog issued by your configured registry"></textarea>
+          <div class="actions"><button id="catalog-import" class="secondary" type="button">Verify &amp; import catalog</button><button id="catalog-file-button" class="secondary" type="button">Choose catalog file</button><input id="catalog-file" type="file" accept=".jws,.txt,text/plain,application/jose" hidden><button id="catalog-refresh" class="secondary" type="button" hidden>Refresh catalog</button></div>
+          <p class="hint">Only catalogs signed by the keys configured in this build can be accepted. Signature, schema, expiry, sequence, and rollback checks run before activation. Maximum file size: 1 MiB.</p>
         </div>
       </section>
       <footer><span>Follow the website. Keep control of the destination.</span><span>Local mappings · No account · No telemetry</span></footer>

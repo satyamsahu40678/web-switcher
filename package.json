@@ -1,15 +1,21 @@
 {
   "name": "web-switcher",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Web Switcher routing feasibility prototype",
+  "description": "Privacy-minded website continuity extension and verified registry platform",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs packages/security/*.test.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:research": "node research/browser_gate_lab.cjs",
     "check": "node scripts/check.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "pretest:browser": "node scripts/sync-security.mjs",
+    "precheck": "node scripts/sync-security.mjs",
+    "prepackage": "node scripts/sync-security.mjs",
+    "test:http": "node tests/http-demo.mjs",
+    "build:web": "npm --prefix apps/web run build",
+    "dev:web": "npm --prefix apps/web run dev"
   },
   "devDependencies": {
     "playwright": "1.56.1"

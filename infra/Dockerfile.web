@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim AS build
+WORKDIR /src
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -s /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --strict-ssl=true --no-audit --no-fund
+COPY apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts ./
+COPY apps/web/src/ ./src/
+COPY apps/web/public/ ./public/
+RUN npm run build
+
+FROM caddy:2-alpine
+COPY infra/caddy/Caddyfile.demo /etc/caddy/Caddyfile
+COPY --from=build /src/dist/ /srv/
+EXPOSE 8080

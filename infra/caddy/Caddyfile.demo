@@ -1,0 +1,25 @@
+{
+    auto_https off
+    admin off
+}
+:8080 {
+    root * /srv
+    encode gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        X-Frame-Options DENY
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    }
+    request_body {
+        max_size 32KB
+    }
+    @api path /v1/* /health/* /oauth2/* /login/* /logout
+    handle @api {
+        reverse_proxy api:8080
+    }
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+}

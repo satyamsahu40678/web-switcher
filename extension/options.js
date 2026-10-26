@@ -47,6 +47,15 @@ async function render() {
   document.querySelector('.status-dot').classList.toggle('paused', paused);
   document.querySelector('#count').textContent = `${config.mappings.length} / 50`;
   document.querySelector('#clear').disabled = receipts.length === 0;
+  const registry = snapshot.registry;
+  document.querySelector('#registry-controls').hidden = !snapshot.registryConfigured;
+  document.querySelector('#catalog-refresh').hidden = !snapshot.registryRefreshConfigured;
+  document.querySelector('#registry-status').textContent = !snapshot.registryConfigured ? 'Not configured' : registry?.sequence !== undefined ? `Sequence ${registry.sequence}` : 'No catalog imported';
+  document.querySelector('#registry-summary').textContent = !snapshot.registryConfigured
+    ? 'No registry key is configured in this development build. Local mappings still work.'
+    : registry?.error ? `Registry unavailable: ${registry.error}`
+      : registry?.expiresAt ? `Catalog expires ${new Date(registry.expiresAt).toLocaleString()}.${Array.isArray(registry.families) ? ` ${registry.families.length} families included.` : ''}`
+        : 'Import a signed catalog from your configured publisher. No catalog has been activated.';
   const list = document.querySelector('#mapping-list');
   list.replaceChildren();
   document.querySelector('#empty').hidden = config.mappings.length > 0;
@@ -57,9 +66,9 @@ async function render() {
     const state = expired ? 'Needs verification' : !granted ? 'Access needed' : paused || !mapping.enabled ? 'Paused' : 'Enabled';
     card.append(element('span', state, `mapping-state${expired || !granted || paused || !mapping.enabled ? ' review' : ''}`));
     card.append(element('h3', mapping.sourceOrigin));
-    card.append(element('p', `↳ ${mapping.destinationOrigin}`, 'destination'));
+    card.append(element('p', `→ ${mapping.destinationOrigin}`, 'destination'));
     card.append(element('p', 'User configured · Not owner or registry verified', 'provenance'));
-    card.append(element('p', `Confirmed locally ${new Date(mapping.createdAt).toLocaleString()} · ${mapping.pathPolicy === 'preserve' ? 'Keeps the public page path' : 'Opens homepage'} · Expires ${new Date(mapping.expiresAt).toLocaleString()}`, 'hint'));
+    card.append(element('p', `Confirmed locally ${new Date(mapping.createdAt).toLocaleString()} · ${mapping.pathPolicy === 'preserve' ? 'Keeps the page path' : 'Opens homepage'} · Expires ${new Date(mapping.expiresAt).toLocaleString()}`, 'hint'));
     const controls = element('div', undefined, 'actions');
     if (!granted) controls.append(action('Grant source access', async () => {
       const accepted = await chrome.permissions.request({origins: [permissionFor(mapping.sourceOrigin)]});
@@ -88,10 +97,6 @@ async function render() {
     time.dateTime = new Date(receipt.at).toISOString();
     detail.append(time);
     row.append(detail);
-    if (receipt.id && receipt.canUndo) row.append(action('Undo switch', async () => {
-      await request({type: 'undo', receiptId: receipt.id});
-      announce('Original address reopened with a temporary extension bypass. The website may still redirect itself.');
-    }));
     history.append(row);
   }
 }
@@ -143,8 +148,9 @@ form.addEventListener('submit', async event => {
 });
 document.querySelector('#pause-all').addEventListener('click', async event => {
   if (!snapshot) return;
-  event.currentTarget.disabled = true;
-  try { await request({type: 'pauseAll', paused: !snapshot.config.paused}); await render(); } catch (error) { announce(error.message, true); event.currentTarget.disabled = false; }
+  const button = event.currentTarget;
+  button.disabled = true;
+  try { await request({type: 'pauseAll', paused: !snapshot.config.paused}); await render(); } catch (error) { announce(error.message, true); button.disabled = false; }
 });
 document.querySelector('#clear').addEventListener('click', async () => {
   try { await request({type: 'clearReceipts'}); await render(); announce('Local activity cleared.'); } catch (error) { announce(error.message, true); }
@@ -176,7 +182,8 @@ document.querySelector('#import-file').addEventListener('change', async event =>
   if (!file) return;
   try {
     if (file.size > 65536) throw new Error('Choose a settings JSON file smaller than 64 KiB.');
-    const settings = JSON.parse(await file.text());
+    const text = await file.text();
+    const settings = JSON.parse(text);
     if (!settings || typeof settings !== 'object' || settings.schemaVersion !== 1 || !Array.isArray(settings.mappings) || settings.mappings.length > 50) throw new Error('This file is not a supported version 1 settings backup.');
     const list = document.querySelector('#import-preview');
     list.replaceChildren();
@@ -190,7 +197,7 @@ document.querySelector('#import-file').addEventListener('change', async event =>
       list.append(row);
     }
     document.querySelector('#import-summary').textContent = `${settings.mappings.length} incoming mappings: ${settings.mappings.length - replacements} new, ${replacements} replacements. All ${snapshot?.config.mappings.length || 0} existing mappings will be replaced.`;
-    pendingImport = settings;
+    pendingImport = {settings, text};
     document.querySelector('#import-dialog').showModal();
   } catch (error) { pendingImport = undefined; announce(error.message, true); }
 });
@@ -201,7 +208,8 @@ document.querySelector('#confirm-import').addEventListener('click', async event 
   const button = event.currentTarget;
   button.disabled = true;
   try {
-    await request({type: 'IMPORT_SETTINGS', settings: pendingImport});
+    // Send original bytes so background validation can reject duplicate JSON keys.
+    await request({type: 'IMPORT_SETTINGS', text: pendingImport.text});
     document.querySelector('#import-dialog').close();
     await render();
     announce('Settings imported. Review each mapping and grant source access where needed. Imported data remains user configured.');
@@ -217,4 +225,43 @@ chrome.storage.local.get('uiTheme').then(({uiTheme = 'system'}) => {
   applyTheme(uiTheme);
   document.querySelector('#theme').value = ['light', 'dark'].includes(uiTheme) ? uiTheme : 'system';
 }).catch(() => {});
+const source = new URLSearchParams(location.search).get('source');
+if (source) { document.querySelector('#source').value = source; previewMapping(); }
 render().catch(error => announce(error.message, true));
+
+async function importCatalog(text) {
+  if (!snapshot?.registryConfigured) throw new Error('No registry key is configured in this development build.');
+  if (new TextEncoder().encode(text).byteLength > 1048576) throw new Error('Choose a signed catalog smaller than 1 MiB.');
+  if (!text.trim()) throw new Error('Paste a signed catalog or choose a catalog file first.');
+  await request({type: 'importCatalog', jws: text.trim()});
+  document.querySelector('#catalog-jws').value = '';
+  await render();
+  announce('Signed catalog accepted after verification. Local mapping trust is unchanged.');
+}
+document.querySelector('#catalog-import').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try { await importCatalog(document.querySelector('#catalog-jws').value); }
+  catch (error) { announce(error.message, true); }
+  finally { button.disabled = false; }
+});
+document.querySelector('#catalog-file-button').addEventListener('click', () => document.querySelector('#catalog-file').click());
+document.querySelector('#catalog-file').addEventListener('change', async event => {
+  const [file] = event.target.files;
+  event.target.value = '';
+  if (!file) return;
+  try {
+    if (file.size > 1048576) throw new Error('Choose a signed catalog smaller than 1 MiB.');
+    const text = await file.text();
+    document.querySelector('#catalog-jws').value = text;
+    announce('Catalog file loaded for review. Choose Verify & import catalog to validate and activate it.');
+    document.querySelector('#catalog-import').focus();
+  } catch (error) { announce(error.message, true); }
+});
+document.querySelector('#catalog-refresh').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try { await request({type: 'REFRESH_CATALOG'}); await render(); announce('Catalog refresh completed.'); }
+  catch (error) { announce(error.message, true); }
+  finally { button.disabled = false; }
+});
