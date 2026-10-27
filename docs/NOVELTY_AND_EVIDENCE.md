@@ -92,9 +92,9 @@ The historical local HTTP experiment demonstrates why remembered shortcuts and a
 Use the versions and prerequisites in the [root guide](../README.md) and [cloud setup script](../scripts/setup-cloud.sh). From the repository root:
 
 ```sh
-npm ci --ignore-scripts
+npm ci
 npm test
-npm --prefix apps/web ci --ignore-scripts
+npm --prefix apps/web ci
 npm --prefix apps/web run build
 npm --prefix apps/web run test:browser
 ./backend/mvnw -f backend/pom.xml verify
