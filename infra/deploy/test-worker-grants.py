@@ -25,9 +25,9 @@ with tempfile.TemporaryDirectory(prefix='web-switcher-worker-grants-') as work:
     def sanitized(text):
         for value in passwords.values():text=text.replace(value,'[REDACTED]')
         return text
-    def sql(role,statement,expected=True):
+    def sql(role,statement,expected=True,database='webswitcher'):
         # Credential is consumed on stdin into psql's environment, never args/logs.
-        command=docker+['exec','-i',container,'sh','-c','IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -XAt -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$1" -d webswitcher','sh',role]
+        command=docker+['exec','-i',container,'sh','-c','IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -XAt -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$1" -d "$2"','sh',role,database]
         result=subprocess.run(command,env=env,input=passwords[role_key[role]]+'\n'+statement+'\n',capture_output=True,text=True)
         if expected and result.returncode:raise AssertionError('Required SQL failed: '+sanitized(result.stderr))
         if not expected and result.returncode==0:raise AssertionError('Forbidden SQL unexpectedly succeeded')
@@ -112,6 +112,40 @@ with tempfile.TemporaryDirectory(prefix='web-switcher-worker-grants-') as work:
         sql(owner,'ALTER ROLE webswitcher_worker BYPASSRLS');bootstrap(expected=False);sql(owner,'ALTER ROLE webswitcher_worker NOBYPASSRLS')
         sql(owner,'CREATE POLICY unreviewed_public ON request_budget TO PUBLIC USING(true)');bootstrap(expected=False);sql(owner,'DROP POLICY unreviewed_public ON request_budget')
         checks.append('schema drift, privileged existing role and unexpected permissive RLS fail closed')
+        # pg_dump normally sets row_security=off to refuse silently incomplete
+        # backups. A permissive SELECT policy alone is therefore insufficient.
+        backup='webswitcher_backup_fixture'
+        passwords['BACKUP_DATABASE_PASSWORD']=secrets.token_urlsafe(32)
+        role_key[backup]='BACKUP_DATABASE_PASSWORD'
+        sql(owner,f"CREATE ROLE {backup} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '{passwords['BACKUP_DATABASE_PASSWORD']}'; GRANT CONNECT ON DATABASE webswitcher TO {backup}; GRANT USAGE ON SCHEMA public TO {backup}; GRANT SELECT ON ALL TABLES IN SCHEMA public TO {backup}; CREATE POLICY backup_read_fixture ON request_budget FOR SELECT TO {backup} USING(true)")
+        sql(api,"INSERT INTO request_budget VALUES('lookup:ip:backup-private-fixture',floor(extract(epoch FROM CURRENT_TIMESTAMP)/3600)::bigint,5)")
+        expected_budgets=sql(owner,'SELECT row_to_json(t) FROM request_budget t ORDER BY bucket')
+        def custom_dump():
+            command=docker+['exec','-i',container,'sh','-c','IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --format=custom --no-owner --no-privileges -h 127.0.0.1 -U "$1" -d webswitcher','sh',backup]
+            return subprocess.run(command,env=env,input=(passwords['BACKUP_DATABASE_PASSWORD']+'\n').encode(),capture_output=True)
+        refused=custom_dump()
+        assert refused.returncode!=0,'A non-bypassing dump identity unexpectedly bypassed request-budget RLS'
+        error=sanitized(refused.stderr.decode(errors='replace'))
+        assert 'row-level security' in error and 'request_budget' in error,'Expected pg_dump RLS refusal, received: '+error
+        assert sql(backup,'SELECT count(*) FROM request_budget')==sql(owner,'SELECT count(*) FROM request_budget')
+        checks.append('real pg_dump refuses a SELECT-only non-bypassing backup role despite an explicit allow-all budget SELECT policy')
+        # BYPASSRLS is granted only to a dedicated test backup identity, never a
+        # runtime role. SQL grants remain SELECT-only and are asserted below.
+        sql(owner,f'ALTER ROLE {backup} BYPASSRLS; DROP POLICY backup_read_fixture ON request_budget')
+        assert sql(backup,"SELECT rolsuper||'|'||rolbypassrls||'|'||rolinherit FROM pg_roles WHERE rolname=current_user")=='false|true|false'
+        for statement in ("UPDATE registry_release SET signed_blob='forged'","UPDATE request_budget SET used=0","CREATE TABLE forbidden_backup(id int)"):
+            sql(backup,statement,False)
+        archive=custom_dump()
+        if archive.returncode:raise AssertionError('Dedicated backup pg_dump failed: '+sanitized(archive.stderr.decode(errors='replace')))
+        assert archive.stdout.startswith(b'PGDMP')
+        sql(owner,'CREATE DATABASE worker_backup_restore')
+        restore_command=docker+['exec','-i',container,'sh','-c','IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_restore --single-transaction --exit-on-error --no-owner --no-privileges -h 127.0.0.1 -U "$1" -d worker_backup_restore','sh',owner]
+        restored=subprocess.run(restore_command,env=env,input=(passwords['OWNER_DATABASE_PASSWORD']+'\n').encode()+archive.stdout,capture_output=True)
+        if restored.returncode:raise AssertionError('RLS-aware backup restore failed: '+sanitized(restored.stderr.decode(errors='replace')))
+        assert sql(owner,'SELECT row_to_json(t) FROM request_budget t ORDER BY bucket',database='worker_backup_restore')==expected_budgets
+        assert sql(owner,"SELECT used FROM request_budget WHERE bucket='lookup:ip:backup-private-fixture'",database='worker_backup_restore')=='5'
+        assert sql(worker,"SELECT count(*) FROM request_budget WHERE bucket LIKE '%:ip:%'")=='0'
+        checks.append('dedicated non-superuser BYPASSRLS backup role retains SELECT-only SQL grants and dumps/restores every budget row without widening worker access')
         if api_image:
             # The same final API image runs the actual non-web Spring worker with
             # only its restricted DB password and fetcher token. Fixture HTTP is

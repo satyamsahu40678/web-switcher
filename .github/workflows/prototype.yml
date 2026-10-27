@@ -37,7 +37,10 @@ jobs:
         run: npx playwright install --with-deps chromium --no-shell
       - name: Run original nine-check browser experiment
         id: research
-        run: npm run test:research
+        run: |
+          export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
+          printf 'CHROMIUM_PATH=%s\n' "$CHROMIUM_PATH" >> "$GITHUB_ENV"
+          npm run test:research
       - name: Run prototype browser tests
         if: ${{ !cancelled() }}
         id: browser
@@ -58,7 +61,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
-            dist/web-switcher-prototype.zip
+            dist/*.zip
             test-results/
             research/browser_gate_results.json
             research/redirect_lab_results.json

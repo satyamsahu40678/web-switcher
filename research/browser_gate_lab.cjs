@@ -54,13 +54,23 @@ const { chromium } = require('playwright');
     })();
   `);
   let context;
+  let activeCheck = 'B00_browser_launch';
   const note = (id, detail) => checks.push({id, passed:true, detail});
+  // Client-side gate replacement can abort the original navigation before its
+  // load event. Each caller still waits for/asserts the required final state.
+  const navigate = async (page, url) => {
+    try { await page.goto(url, {waitUntil:'domcontentloaded'}); }
+    catch (error) { if (!error.message.includes('ERR_ABORTED')) throw error; }
+  };
   try {
     context = await chromium.launchPersistentContext(path.join(temp,'profile'), {
       channel:'chromium', headless:true,
+      ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {}),
       args:[`--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
         '--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP *.test 127.0.0.1']
     });
+    context.setDefaultTimeout(10000);
+    activeCheck = 'B00_extension_worker';
     let [worker] = context.serviceWorkers();
     if (!worker) worker = await context.waitForEvent('serviceworker');
     const id = worker.url().split('/')[2];
@@ -75,38 +85,48 @@ const { chromium } = require('playwright');
     }, {port,gate});
     const page = await context.newPage();
     const source = `http://old.test:${port}/docs/a%20b?token=synthetic#section`;
-    await page.goto(source);
+    activeCheck = 'B01_gate_redirect';
+    await navigate(page, source);
     await page.waitForURL(`http://new.test:${port}/docs/a%20b`);
     note('B01_gate_redirect', 'DNR redirected through packaged gate to the expected path.');
+    activeCheck = 'B02_no_old_origin_request';
     assert.equal(hits.filter(x=>x.host.startsWith('old.test:')).length,0);
     note('B02_no_old_origin_request', 'Known alias was intercepted before this local old HTTP origin received a request.');
     const observedSource = await worker.evaluate(async()=> (await chrome.storage.local.get('lastSeen')).lastSeen);
+    activeCheck = 'B03_sensitive_url_drop';
     assert.equal(new URL(page.url()).search,''); assert.equal(new URL(page.url()).hash,'');
     note('B03_sensitive_url_drop','Synthetic query token and fragment were absent from destination URL.');
+    activeCheck = 'B04_encoded_paths';
     for (const fixture of ['/x/%2Fencoded','/docs/a%26b','/docs/%E2%9C%93']) {
-      await page.goto(`http://old.test:${port}${fixture}`);
+      await navigate(page, `http://old.test:${port}${fixture}`);
       await page.waitForURL(`http://new.test:${port}${fixture}`);
     }
     note('B04_encoded_paths','Three encoded-path fixtures round-tripped without query/fragment forwarding.');
-    await page.goto(`http://old.test.evil.test:${port}/page`);
+    activeCheck = 'B05_exact_host';
+    await navigate(page, `http://old.test.evil.test:${port}/page`);
     assert.equal(new URL(page.url()).hostname,'old.test.evil.test');
     note('B05_exact_host','Suffix-lookalike hostname did not match the source rule.');
+    activeCheck = 'B06_expired_mapping';
     await worker.evaluate(()=>chrome.storage.local.set({catalog:{enabled:true,expiresAt:0}}));
-    await page.goto(`http://old.test:${port}/expired`);
+    await navigate(page, `http://old.test:${port}/expired`);
     await page.waitForFunction(()=>document.querySelector('#state')?.textContent==='expired');
     assert.ok(page.url().startsWith(gate));
     note('B06_expired_mapping','Persisted DNR rule reached the gate, which stopped an expired mapping.');
+    activeCheck = 'B07_paused_mapping';
     await worker.evaluate(()=>chrome.storage.local.set({catalog:{enabled:false,expiresAt:Date.now()+600000}}));
-    await page.goto(`http://old.test:${port}/paused`);
+    await navigate(page, `http://old.test:${port}/paused`);
     await page.waitForFunction(()=>document.querySelector('#state')?.textContent==='paused');
     note('B07_paused_mapping','Gate stopped routing when the family was locally paused.');
-    await page.goto(gate+`#alias=old&source=http://evil.test:${port}/page`);
+    activeCheck = 'B08_untrusted_gate_input';
+    await navigate(page, gate+`#alias=old&source=http://evil.test:${port}/page`);
     await page.waitForFunction(()=>document.querySelector('#state')?.textContent==='rejected');
     note('B08_untrusted_gate_input','Directly supplied unrelated source host was rejected.');
-    await page.goto(`http://launcher.test:${port}/form`);
+    activeCheck = 'B09_post_exclusion';
+    await navigate(page, `http://launcher.test:${port}/form`);
     await Promise.all([page.waitForURL(`http://old.test:${port}/submit`),page.getByRole('button',{name:'Send'}).click()]);
     assert.ok(hits.some(x=>x.host.startsWith('old.test:')&&x.method==='POST'));
     note('B09_post_exclusion','POST form navigation was not rewritten by the GET-only rule.');
+    assert.equal(checks.length,9,'Every historical gate check must execute.');
     const version = context.browser()?.version() || 'unknown';
     const result = {executedAt:new Date().toISOString(), browserVersion:version, scope:'Disposable unpacked Chromium extension; controlled loopback HTTP',
       passedChecks:checks.length, checks, sourceSeenByGate:observedSource,
@@ -116,7 +136,12 @@ const { chromium } = require('playwright');
     fs.writeFileSync(path.join(__dirname,'browser_gate_results.json'),JSON.stringify(result,null,2)+'\n');
     console.log(JSON.stringify(result,null,2));
   } catch (error) {
-    fs.writeFileSync(path.join(__dirname,'browser_gate_results.json'),JSON.stringify({executedAt:new Date().toISOString(),passedChecks:checks.length,checks,error:String(error)},null,2)+'\n');
+    const detail = `${activeCheck}: ${error.message}`;
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.error(`::error title=Historical gate feasibility::${detail.replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A')}`);
+    }
+    checks.push({id:activeCheck,passed:false,error:error.message});
+    fs.writeFileSync(path.join(__dirname,'browser_gate_results.json'),JSON.stringify({executedAt:new Date().toISOString(),passedChecks:checks.filter(check=>check.passed).length,checks,error:detail},null,2)+'\n');
     throw error;
   } finally {
     if(context) await context.close();

@@ -57,6 +57,14 @@ Without the optional API image, the API readiness check is explicitly recorded a
 
 Current-run evidence is written to ignored `test-results/backup-restore-drill.json`, including actual tool versions, check outcomes, encrypted size and local elapsed backup, SQL restore and API-readiness times. The tested fixture is deliberately small. These times exclude remote transport, provider outages, operator response and large-database recovery; do not advertise them as production capacity, RPO or RTO measurements.
 
+## Full backups when optional discovery enables RLS
+
+The eleven-check encryption drill uses the base V1 schema; it does not itself enable the optional discovery worker's request-budget row-level security (RLS). Once that optional bootstrap is applied to a deployed database, an ordinary SELECT-only dump role cannot run the default full `pg_dump`, even with an allow-all SELECT policy: `pg_dump` sets `row_security=off` and refuses tables whose RLS it cannot bypass.
+
+Provision a separately protected backup identity authorized to read all rows before enabling discovery: a dedicated non-superuser `BYPASSRLS` role with explicit SELECT-only SQL grants, or a trusted table owner where ownership bypasses RLS. Keep the backup credential out of runtime API/publisher/worker processes. Do not disable RLS or add `--enable-row-security` to make a dump pass; a filtered archive cannot demonstrate complete recovery. See [the worker database guide](DISCOVERY_DATABASE.md#backup-identity-after-enabling-rls) for the operational requirement. The existing worker bootstrap deliberately does not create this identity or weaken any runtime grant.
+
+The separate PostgreSQL 17 worker-grants test executes both paths: default `pg_dump` refusal under a non-bypassing SELECT-only identity despite its explicit allow-all policy, then successful custom-archive dump and clean restore under a separate SELECT-only `BYPASSRLS` identity. It compares every request-budget row/value, including a private per-address fixture row, and confirms that runtime worker access remains restricted. This supplements the encryption drill without claiming a production backup identity or off-host pipeline has been configured.
+
 ## Restore safeguards
 
 `restore.sh` requires the adjacent `.sha256` produced by `backup.sh`. Its strict verifier accepts exactly one checksum naming the selected archive's own basename; filenames in a checksum cannot redirect verification to another path. The hash catches accidental damage or wrong files. It is not an authenticity signature: age's authenticated decryption is still required.

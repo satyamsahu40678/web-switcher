@@ -71,9 +71,12 @@ jobs:
               workflow_id: 'platform.yml', head_sha: process.env.SOURCE_SHA,
               status: 'completed', per_page: 100
             });
-            const passed = data.workflow_runs.some(run =>
-              run.head_sha === process.env.SOURCE_SHA && run.conclusion === 'success');
-            if (!passed) core.setFailed('No successful complete platform workflow exists for this exact source SHA.');
+            const {pathToFileURL} = require('node:url');
+            const {hasVerifiedSourceRun} = await import(pathToFileURL(
+              process.env.GITHUB_WORKSPACE + '/infra/deploy/verified-ci.mjs').href);
+            if (!hasVerifiedSourceRun(data.workflow_runs, process.env.SOURCE_SHA)) {
+              core.setFailed('No successful direct-source platform workflow exists for this exact SHA. PR merge checks do not authorize release.');
+            }
   images:
     needs: verify-source
     runs-on: ubuntu-24.04

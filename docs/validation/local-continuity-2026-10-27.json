@@ -1,8 +1,8 @@
 {
-  "recordedAt": "2026-10-27T15:48:32.481140+00:00",
+  "recordedAt": "2026-10-27T16:04:55.884842+00:00",
   "scope": "Local pre-publication development validation; exact hosted revisions are recorded separately.",
   "javascript": {
-    "tests": 81,
+    "tests": 84,
     "failures": 0,
     "skipped": 0
   },
@@ -119,10 +119,12 @@
         "worker and default bootstrap reruns preserve counters/jobs and role boundaries",
         "credential reuse and implicit worker password rotation refuse before breaking existing access",
         "schema drift, privileged existing role and unexpected permissive RLS fail closed",
+        "real pg_dump refuses a SELECT-only non-bypassing backup role despite an explicit allow-all budget SELECT policy",
+        "dedicated non-superuser BYPASSRLS backup role retains SELECT-only SQL grants and dumps/restores every budget row without widening worker access",
         "final API image starts the non-web restricted worker without Flyway/OIDC/signing credentials and completes a real internal fixture probe",
         "real worker inserts only pending candidate and discovery audit while active families, signed release bytes and sequence remain unchanged"
       ],
-      "passed": 17,
+      "passed": 19,
       "workerImageTest": "passed",
       "workerImage": "sha256:907b0668a8e0264653ce175b8986e1c4a04c6f8a5215a1b9408b7532c3e72e65",
       "limitations": [
@@ -156,5 +158,6 @@
     "Synthetic loopback/internal fixtures, not public production deployment.",
     "No full migration dataset, scientific novelty result, real owner enrollment or production signing-key recovery.",
     "Native optional-permission dialogs, branded Chrome/Edge/store acceptance and deployed public-fetcher egress remain separate gates."
-  ]
+  ],
+  "releaseEvidenceGateTests": 3
 }
