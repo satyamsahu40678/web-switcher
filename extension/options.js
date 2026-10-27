@@ -94,8 +94,14 @@ async function render() {
     controls.append(action('Open homepage', () => chrome.tabs.create({url: mapping.destinationOrigin + '/'})));
     controls.append(action('Remove', async () => {
       await request({type: 'remove', id: mapping.id});
-      await chrome.permissions.remove({origins: [permissionFor(mapping.sourceOrigin)]});
-      announce('Mapping removed and its source access released.');
+      // The mapping is already removed even if browser policy/required host
+      // permissions prevent releasing access. Always refresh the saved state.
+      try {
+        const released = await chrome.permissions.remove({origins: [permissionFor(mapping.sourceOrigin)]});
+        announce(released ? 'Mapping removed and its source access released.' : 'Mapping removed. Source access remains; review it in your browser extension settings.');
+      } catch {
+        announce('Mapping removed. Your browser did not allow source access to be released; review it in your browser extension settings.');
+      }
     }, 'text-button'));
     card.append(controls);
     if (expired) card.append(element('p', 'Remove and re-add this mapping after checking the destination again.', 'hint'));

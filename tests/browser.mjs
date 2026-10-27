@@ -229,6 +229,20 @@ try {
     await settings.getByText('A new thread starts here', {exact: true}).waitFor();
     assert.equal((await currentConfig()).mappings.length, 0);
     assert.equal((await worker.evaluate(() => chrome.declarativeNetRequest.getDynamicRules())).length, 0);
+    // These test hosts are deliberately required/pregranted. Chrome cannot
+    // revoke them through permissions.remove; that cleanup limitation must not
+    // turn a committed mapping removal into an error or leave stale UI/rules.
+    assert.equal(await worker.evaluate(origin => chrome.permissions.contains({origins: [origin + '/*']}), sourceOrigin), true);
+    const notice = settings.locator('#notice');
+    const removalMessage = await notice.textContent();
+    assert.match(removalMessage, /^Mapping removed\./);
+    assert.match(removalMessage, /source access/);
+    assert.match(removalMessage, /browser/);
+    assert.equal(await notice.evaluate(node => node.classList.contains('error')), false);
+    const original = await freshPage();
+    await original.goto(sourceOrigin + '/after-removal');
+    assert.equal(original.url(), sourceOrigin + '/after-removal');
+    assert.ok(hits.some(hit => hit.host === `old.test:${port}` && hit.path === '/after-removal' && hit.method === 'GET'));
   });
 } catch (error) {
   const notices = [];
