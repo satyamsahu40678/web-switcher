@@ -29,7 +29,9 @@ npm run test:research
 
 The runner uses the locked Playwright dependency, disposable profile, generated unpacked extension and loopback `.test` origins. It writes `research/browser_gate_results.json`. Its nine checks cover gate navigation, old-origin interception, query/fragment removal, encoded paths, exact hosts, expiration, pause, hostile input and POST exclusion. This minimal fixture has no signed catalog, settings UX or permission onboarding.
 
-The continuation downloaded Chromium 141 successfully, then hit a local process-sandbox socket restriction. The environment rejected permission escalation. An ordinary isolated CI job was prepared with a read-only token and no deployment credentials. Publishing the branch was then blocked by GitHub write permissions, so the job has not run. This does not turn an unexecuted test into a pass: see the [status record](../docs/PROTOTYPE_STATUS.md).
+During the original 26 October continuation, Chromium 141 downloaded successfully but hit a local process-sandbox socket restriction; permission escalation and GitHub publication were blocked then. Those historical outcomes remain in the [prototype status record](../docs/PROTOTYPE_STATUS.md). Current publication and hosted results are recorded separately in [the implementation ledger](../docs/IMPLEMENTATION_STATUS.md).
+
+The minimal fixture runs its validation script once per document. Changing only its URL fragment does not rerun that script. B08 therefore checks both that a paused document stays blocked after a hostile fragment change and that a newly opened gate rejects the hostile source without contacting it. A hash-navigation timeout is not evidence that the source was accepted. The runner records the active check and emits a bounded failure annotation for CI diagnosis; all nine assertions must execute before it reports success.
 
 ## Actual prototype browser suite
 

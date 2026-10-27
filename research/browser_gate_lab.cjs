@@ -118,9 +118,20 @@ const { chromium } = require('playwright');
     await page.waitForFunction(()=>document.querySelector('#state')?.textContent==='paused');
     note('B07_paused_mapping','Gate stopped routing when the family was locally paused.');
     activeCheck = 'B08_untrusted_gate_input';
+    // A hash-only change is same-document navigation: this minimal fixture's
+    // one-shot script does not run again. It must not route the paused page.
     await navigate(page, gate+`#alias=old&source=http://evil.test:${port}/page`);
-    await page.waitForFunction(()=>document.querySelector('#state')?.textContent==='rejected');
-    note('B08_untrusted_gate_input','Directly supplied unrelated source host was rejected.');
+    assert.equal(await page.locator('#state').textContent(),'paused');
+    assert.ok(page.url().startsWith(gate));
+    // Exercise hostile input at document creation, when the validation script
+    // actually executes, instead of waiting for a nonexistent fragment rerun.
+    const hostile = await context.newPage();
+    await navigate(hostile, gate+`#alias=old&source=http://evil.test:${port}/page`);
+    await hostile.waitForFunction(()=>document.querySelector('#state')?.textContent==='rejected');
+    assert.ok(hostile.url().startsWith(gate));
+    assert.equal(hits.filter(hit=>hit.host.startsWith('evil.test:')).length,0);
+    await hostile.close();
+    note('B08_untrusted_gate_input','A fresh gate rejected an unrelated source without contacting it; a paused document stayed blocked after a fragment change.');
     activeCheck = 'B09_post_exclusion';
     await navigate(page, `http://launcher.test:${port}/form`);
     await Promise.all([page.waitForURL(`http://old.test:${port}/submit`),page.getByRole('button',{name:'Send'}).click()]);
