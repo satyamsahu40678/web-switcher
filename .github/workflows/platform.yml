@@ -177,6 +177,8 @@ jobs:
         run: ./backend/mvnw -f backend/pom.xml --batch-mode --no-transfer-progress verify
       - name: Verify append-only releases, separated database roles and repeatable bootstrap
         run: python3 infra/deploy/test-db-grants.py
+      - name: Verify opt-in discovery worker grants and scoped budgets
+        run: python3 infra/deploy/test-worker-grants.py
       - name: Preserve PostgreSQL test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -223,6 +225,7 @@ jobs:
           export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
           API_BASE=http://127.0.0.1:8088 node tests/http-demo.mjs
           LIVE_WEB_BASE=http://127.0.0.1:8088 node apps/web/tests/e2e-browser.mjs
+          API_BASE=http://127.0.0.1:8088 node tests/catalog-load.mjs
           curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-before-restart.jws
           docker compose -p web-switcher-ci -f infra/compose/local.yml restart api
           for attempt in $(seq 1 60); do
@@ -233,6 +236,15 @@ jobs:
           done
           curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-after-restart.jws
           cmp test-results/catalog-before-restart.jws test-results/catalog-after-restart.jws
+      - name: Exercise real encrypted PostgreSQL backup and clean recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -f infra/backup/Dockerfile.drill -t web-switcher-backup-drill:local .
+          api_image="$(docker compose -p web-switcher-ci -f infra/compose/local.yml images -q api)"
+          test -n "$api_image"
+          RESTORE_DRILL_API_IMAGE="$api_image" python3 infra/backup/drill.py
+          WORKER_TEST_API_IMAGE="$api_image" python3 infra/deploy/test-worker-grants.py
       - name: Capture container evidence and clean the disposable stack
         if: always()
         shell: bash

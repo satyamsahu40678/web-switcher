@@ -15,6 +15,8 @@ Do not put credentials, private browsing URLs, exploit payloads against real use
 - Public reports enter a pending queue. Optimistic review versions and separate publisher authorization prevent a report or review from silently activating navigation.
 - Cookie-authenticated writes require CSRF protection. Non-demo administrative sessions use OIDC subject allowlists, rather than display names.
 - The fetcher has separate internal authentication and validates public addresses, ports, TLS and response bounds. Application checks complement deployed egress restrictions.
+- Opt-in discovery uses durable leases and budgets in a separate non-web worker. It has no signing key or public listener; observed redirects remain pending unverified evidence. A restricted PostgreSQL worker role prevents family/release/decision writes and limits candidate and budget access.
+- Restore verifies the adjacent ciphertext checksum and completes authenticated age decryption before starting a single-transaction database restore. Local real PostgreSQL recovery is tested; off-host durability and private-key recovery remain operator controls.
 
 Read the actual module tests and [implementation status](IMPLEMENTATION_STATUS.md) before relying on a control; a written design is not a passing test.
 
@@ -23,6 +25,8 @@ Read the actual module tests and [implementation status](IMPLEMENTATION_STATUS.m
 Local mappings, selected permissions and catalog state remain in the browser profile. Receipts record origins/timestamps, which can still reveal interests; use clear-data controls and the implemented retention limit. No original query, fragment or path belongs in a receipt.
 
 Explicit lookup sends a hostname to the API; the service sees the client's IP. Reports include user-entered reasons, so users must omit personal data and secrets. Administrative audit records include actor IDs and review/publication reasons. The service's IP budget keys are abuse controls, not an anonymity guarantee.
+
+When optional discovery is enabled, that explicit lookup can cause the isolated fetcher to contact the public hostname. The lookup reference and cached result expire; candidates retained for moderation contain hostname/origin observations and a response digest. The UI checks job status only when the user requests it. No unverified destination appears in public status responses. See [discovery limits](DISCOVERY.md) and [the implemented threat/evidence map](NOVELTY_AND_EVIDENCE.md).
 
 The demo uses synthetic `.test` domains and generated development keys. Its known example password is not production authentication. Never expose demo mode to the internet or trust its keys in a production extension.
 

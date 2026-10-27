@@ -380,13 +380,15 @@ function LookupForm() {
   const [host, setHost] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [result, setResult] = useState<Lookup | null>(null);
+    [result, setResult] = useState<Lookup | null>(null),
+    [queriedHost, setQueriedHost] = useState("");
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setResult(null);
     try {
       const normalized = normalizeHost(host);
+      setQueriedHost(normalized);
       setBusy(true);
       setResult(
         await request<Lookup>("/v1/lookups", {
@@ -400,6 +402,20 @@ function LookupForm() {
       setBusy(false);
     }
   }
+  async function refreshLookup() {
+    if (!result?.lookupId || !/^[0-9a-f-]{36}$/i.test(result.lookupId)) return;
+    setError("");
+    setBusy(true);
+    try {
+      const updated = await request<Lookup>(`/v1/lookups/${encodeURIComponent(result.lookupId)}`);
+      setResult({...updated, lookupId: result.lookupId});
+    } catch (failure) {
+      setResult({...result, status: "failed"});
+      setError((failure as Error).message);
+    } finally { setBusy(false); }
+  }
+  const candidatesFound = result?.status === "candidates_found" || result?.reason === "UNVERIFIED_CANDIDATE_QUEUED";
+  const discoveryFailed = result?.status === "failed" || result?.reason === "DISCOVERY_UNAVAILABLE";
   return (
     <>
       <div className="panel-topline">
@@ -429,8 +445,8 @@ function LookupForm() {
           </button>
         </div>
         <p id="lookup-disclosure" className="hint">
-          Only this hostname is sent when you press the arrow. No background
-          search.
+          Only this hostname is sent when you request a lookup. Queued checks
+          run only after your request.
         </p>
       </form>
       <ErrorBox text={error} />
@@ -451,13 +467,18 @@ function LookupForm() {
             {result.status === "verified"
               ? "A reviewed destination is available"
               : result.status === "pending"
-                ? "No destination has been approved yet"
-                : "No verified replacement found"}
+                ? "A discovery check is queued"
+                : candidatesFound
+                  ? "Candidates need review"
+                  : discoveryFailed
+                    ? "The discovery check could not complete"
+                    : "No verified replacement found"}
           </h3>
-          {result.destinationOrigin && (
+          <p className="hint">Lookup for {queriedHost}</p>
+          {result.status === "verified" && result.destinationOrigin && (
             <p className="domain">{result.destinationOrigin}</p>
           )}
-          {result.trustClass && (
+          {result.status === "verified" && result.trustClass && (
             <p>
               Evidence class: <strong>{label(result.trustClass)}</strong>
             </p>
@@ -465,8 +486,17 @@ function LookupForm() {
           <p>
             {result.status === "verified"
               ? "This lookup is informational. The extension must verify the signed catalog and your permissions before routing."
-              : "We will not guess a destination. Keep the original link, or submit evidence for review."}
+              : result.status === "pending"
+                ? "The configured worker will inspect this public hostname. Its observations cannot authorize a redirect. Check the status when you choose."
+                : candidatesFound
+                  ? "Unverified observations entered the moderation queue. Independent review and publication are required before any redirect can be approved."
+                  : "We will not guess a destination. Keep the original link, or submit evidence for review."}
           </p>
+          {result.status === "pending" && result.lookupId && (
+            <button type="button" className="button" disabled={busy} onClick={refreshLookup}>
+              {busy ? "Checking…" : "Check lookup status"}
+            </button>
+          )}
         </div>
       )}
     </>

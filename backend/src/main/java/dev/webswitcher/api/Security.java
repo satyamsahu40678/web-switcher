@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.util.*;
 
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication(type=org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET)
 class Security {
  @Bean InMemoryUserDetailsManager demoUsers(@Value("${web-switcher.demo}") boolean demo) {
   var manager=new InMemoryUserDetailsManager();

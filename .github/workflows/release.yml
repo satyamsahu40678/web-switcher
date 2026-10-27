@@ -207,6 +207,7 @@ jobs:
           export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
           API_BASE=http://127.0.0.1:8088 node tests/http-demo.mjs
           LIVE_WEB_BASE=http://127.0.0.1:8088 node apps/web/tests/e2e-browser.mjs
+          API_BASE=http://127.0.0.1:8088 node tests/catalog-load.mjs
           curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-before-restart.jws
           "${stack[@]}" restart api
           for attempt in $(seq 1 60); do
@@ -215,6 +216,14 @@ jobs:
           done
           curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-after-restart.jws
           cmp test-results/catalog-before-restart.jws test-results/catalog-after-restart.jws
+      - name: Rehearse encrypted recovery using the exact published API image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -f infra/backup/Dockerfile.drill -t web-switcher-backup-drill:local .
+          api_image="$(python3 -c 'import json;print(json.load(open("release-artifact/release.json"))["apiImage"])')"
+          RESTORE_DRILL_API_IMAGE="$api_image" python3 infra/backup/drill.py
+          WORKER_TEST_API_IMAGE="$api_image" python3 infra/deploy/test-worker-grants.py
       - name: Preserve image acceptance evidence and clean the disposable stack
         if: always()
         shell: bash

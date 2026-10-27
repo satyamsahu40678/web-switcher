@@ -17,9 +17,10 @@ class Signer {
  private final PrivateKey privateKey;private final PublicKey publicKey;final String keyId;final boolean demo;
  Signer(@Value("${web-switcher.demo}")boolean demo,@Value("${web-switcher.publishing-private-key:}")String keyFile,@Value("${web-switcher.publishing-key-id:}")String keyId,@Value("${web-switcher.runtime-role:api}")String role,org.springframework.core.env.Environment environment)throws Exception{
   if(demo&&!environment.acceptsProfiles(org.springframework.core.env.Profiles.of("demo")))throw new IllegalStateException("Demo mode requires the explicit demo Spring profile.");
-  if(!Set.of("api","publisher").contains(role))throw new IllegalStateException("APP_ROLE must be api or publisher.");
+  if(!Set.of("api","publisher","worker").contains(role))throw new IllegalStateException("APP_ROLE must be api, publisher or worker.");
   if(!demo&&role.equals("api")&&!keyFile.isBlank())throw new IllegalStateException("The public API role must not hold publishing credentials.");
   if(!demo&&role.equals("publisher")&&keyFile.isBlank())throw new IllegalStateException("The publisher role requires a publishing key.");
+  if(role.equals("worker")&&(!environment.acceptsProfiles(org.springframework.core.env.Profiles.of("worker"))||demo||!keyFile.isBlank()))throw new IllegalStateException("The keyless worker role requires the explicit non-demo worker profile.");
   this.demo=demo;
   if(demo){
    Path dir=Path.of("data");Files.createDirectories(dir);Path secret=dir.resolve("demo-registry-private.pk8"),pub=dir.resolve("demo-registry-public.der");

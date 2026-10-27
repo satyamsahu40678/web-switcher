@@ -56,3 +56,22 @@ export RESTORE_CONFIRM_DATABASE="$PGDATABASE" BACKUP_TEST_TABLES=1
 if "$backup_script_dir/restore.sh" "$backup_test_archive" >/dev/null 2>&1; then echo 'FAIL nonempty target accepted.' >&2; exit 1; fi
 [[ ! -e "$BACKUP_TEST_RESTORE_LOG" ]]
 printf 'PASS restore rejects nonempty database\n'
+
+# Checksum guards must fail before decryption or any restore invocation.
+export BACKUP_TEST_TABLES=0
+cp "$backup_test_archive" "$backup_test_dir/original.age"
+cp "$backup_test_archive.sha256" "$backup_test_dir/original.sha256"
+printf tampered >> "$backup_test_archive"
+if "$backup_script_dir/restore.sh" "$backup_test_archive" >/dev/null 2>&1; then echo 'FAIL mismatched ciphertext checksum accepted.' >&2; exit 1; fi
+[[ ! -e "$BACKUP_TEST_RESTORE_LOG" ]]
+printf 'PASS restore rejects ciphertext checksum mismatch\n'
+cp "$backup_test_dir/original.age" "$backup_test_archive"
+checksum_value="$(sha256sum "$backup_test_archive" | cut -d' ' -f1)"
+printf '%s  ../other.dump.age\n' "$checksum_value" > "$backup_test_archive.sha256"
+if "$backup_script_dir/restore.sh" "$backup_test_archive" >/dev/null 2>&1; then echo 'FAIL alternate checksum filename accepted.' >&2; exit 1; fi
+[[ ! -e "$BACKUP_TEST_RESTORE_LOG" ]]
+printf 'PASS restore refuses checksum path substitution\n'
+rm "$backup_test_archive.sha256"
+if "$backup_script_dir/restore.sh" "$backup_test_archive" >/dev/null 2>&1; then echo 'FAIL missing checksum accepted.' >&2; exit 1; fi
+[[ ! -e "$BACKUP_TEST_RESTORE_LOG" ]]
+printf 'PASS restore requires adjacent checksum\n'

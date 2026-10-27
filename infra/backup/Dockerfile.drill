@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+# Disposable recovery-test tooling, never an application or production image.
+# PG17 is supplied by the base; extra tools use signed Debian repositories only.
+FROM postgres:17
+RUN --mount=type=secret,id=proxy_ca \
+    set -eu; \
+    if [ -s /run/secrets/proxy_ca ]; then \
+      if [ -f /etc/ssl/certs/ca-certificates.crt ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/proxy_ca > /tmp/drill-ca.pem; else cp /run/secrets/proxy_ca /tmp/drill-ca.pem; fi; \
+      printf 'Acquire::https::CaInfo "/tmp/drill-ca.pem";\n' > /etc/apt/apt.conf.d/99-drill-ca; \
+    fi; \
+    rm -f /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends age python3 ca-certificates; \
+    rm -rf /var/lib/apt/lists/* /tmp/drill-ca.pem /etc/apt/apt.conf.d/99-drill-ca

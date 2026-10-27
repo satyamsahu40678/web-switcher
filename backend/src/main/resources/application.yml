@@ -32,3 +32,14 @@ web-switcher:
   publisher-subjects: ${PUBLISHER_ALLOWED_SUBJECTS:}
   lookup-budget: 100
   report-budget: 30
+  discovery:
+    queue-enabled: ${DISCOVERY_QUEUE_ENABLED:false}
+    worker-enabled: false
+    fetcher-url: ${FETCHER_URL:}
+    fetcher-token: ${FETCHER_INTERNAL_TOKEN:}
+    queued-per-hour: ${DISCOVERY_QUEUED_PER_HOUR:100}
+    probes-per-hour: ${DISCOVERY_PROBES_PER_HOUR:20}
+    probes-per-day: ${DISCOVERY_PROBES_PER_DAY:100}
+    per-host-per-hour: 3
+    concurrency: ${DISCOVERY_CONCURRENCY:2}
+    ttl-seconds: ${DISCOVERY_TTL_SECONDS:3600}

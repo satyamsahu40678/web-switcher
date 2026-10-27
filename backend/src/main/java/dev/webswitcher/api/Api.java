@@ -13,8 +13,8 @@ import java.util.*;
 
 @RestController
 class Api {
- private final Registry registry;private final Signer signer;private final boolean demo;private final int lookupBudget,reportBudget;
- Api(Registry registry,Signer signer,@Value("${web-switcher.demo}")boolean demo,@Value("${web-switcher.lookup-budget}")int lookupBudget,@Value("${web-switcher.report-budget}")int reportBudget){this.registry=registry;this.signer=signer;this.demo=demo;this.lookupBudget=lookupBudget;this.reportBudget=reportBudget;}
+ private final Registry registry;private final Signer signer;private final DiscoveryQueue discovery;private final boolean demo;private final int lookupBudget,reportBudget;
+ Api(Registry registry,Signer signer,DiscoveryQueue discovery,@Value("${web-switcher.demo}")boolean demo,@Value("${web-switcher.lookup-budget}")int lookupBudget,@Value("${web-switcher.report-budget}")int reportBudget){this.registry=registry;this.signer=signer;this.discovery=discovery;this.demo=demo;this.lookupBudget=lookupBudget;this.reportBudget=reportBudget;}
  @GetMapping("/health/live") Map<String,Object> live(){return Map.of("status","UP");}
  @GetMapping("/health/ready") Map<String,Object> ready(){registry.health();return Map.of("status","UP","database","ready");}
  @GetMapping("/v1/session") Map<String,Object> session(Authentication auth,HttpServletRequest request){
@@ -30,7 +30,8 @@ class Api {
   return new ResponseEntity<>(compact,headers,HttpStatus.OK);
  }
  @GetMapping("/v1/families/{id}") Map<String,Object> family(@PathVariable String id){return registry.family(id);}
- @PostMapping("/v1/lookups") Map<String,Object> lookup(@RequestBody String raw,HttpServletRequest request){var body=body(raw);Policy.closed(body,"hostname","clientVersion","requestedMode");String host=Policy.hostname(Policy.text(body.get("hostname"),253,"hostname"));registry.budget("lookup",request.getRemoteAddr(),30,lookupBudget);return registry.lookup(host);}
+ @PostMapping("/v1/lookups") ResponseEntity<Map<String,Object>> lookup(@RequestBody String raw,HttpServletRequest request){var body=body(raw);Policy.closed(body,"hostname","clientVersion","requestedMode");String host=Policy.hostname(Policy.text(body.get("hostname"),253,"hostname"));registry.budget("lookup",request.getRemoteAddr(),30,lookupBudget);var result=registry.lookup(host);if(discovery.enabled()&&"unknown".equals(result.get("status"))){var queued=discovery.enqueue(host);return ResponseEntity.status("pending".equals(queued.get("status"))?202:200).body(queued);}return ResponseEntity.ok(result);}
+ @GetMapping("/v1/lookups/{id}") Map<String,Object> lookupStatus(@PathVariable String id,HttpServletRequest request){discovery.requireEnabled();registry.budget("lookup-poll",request.getRemoteAddr(),120,1000);return discovery.poll(id);}
  @PostMapping("/v1/reports") ResponseEntity<Map<String,Object>> report(@RequestBody String raw,HttpServletRequest request,Authentication auth){
   var body=body(raw);Policy.closed(body,"sourceHost","proposedHost","reason");String source=Policy.hostname(Policy.text(body.get("sourceHost"),253,"sourceHost")),proposed=Policy.hostname(Policy.text(body.get("proposedHost"),253,"proposedHost")),reason=Policy.text(body.get("reason"),1000,"reason");
   if(source.equals(proposed))throw Policy.problem(400,"SELF_MAPPING","Source and destination must differ.");registry.budget("report",request.getRemoteAddr(),10,reportBudget);

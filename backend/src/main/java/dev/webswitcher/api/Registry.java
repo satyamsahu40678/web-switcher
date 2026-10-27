@@ -13,7 +13,10 @@ class Registry {
  private final JdbcTemplate db;private final Signer signer;private final boolean demo;
  Registry(JdbcTemplate db,Signer signer,@Value("${web-switcher.demo}")boolean demo){this.db=db;this.signer=signer;this.demo=demo;}
  @PostConstruct void initialize(){
-  for(String bucket:List.of("lookup:global","report:global")) if(db.queryForObject("SELECT COUNT(*) FROM request_budget WHERE bucket=?",Integer.class,bucket)==0) db.update("INSERT INTO request_budget(bucket,window_start,used) VALUES(?,0,0)",bucket);
+  for(String bucket:List.of("lookup:global","report:global")) {
+   try {db.update("INSERT INTO request_budget(bucket,window_start,used) VALUES(?,0,0)",bucket);}
+   catch(org.springframework.dao.DuplicateKeyException ignored){/* API and worker can initialize concurrently; never reset existing counters. */}
+  }
   if(demo&&db.queryForObject("SELECT COUNT(*) FROM site_family",Integer.class)==0){
    db.update("INSERT INTO site_family(id,name,source_origin,destination_origin,state,valid_until,version) VALUES(?,?,?,?,?,?,0)","demo-docs","Web Switcher controlled documentation demo","https://old.web-switcher.test","https://current.web-switcher.test","active",OffsetDateTime.now(ZoneOffset.UTC).plusHours(24));
   }

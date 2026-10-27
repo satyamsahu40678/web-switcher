@@ -60,7 +60,14 @@ try {
     });
     let body = {};
     let status = 200;
-    if (path === "/v1/lookups") body = { status: "unknown" };
+    if (path === "/v1/lookups") {
+      const hostname = req.postDataJSON().hostname;
+      body = hostname === "queued.example"
+        ? {status: "pending", lookupId: "12345678-1234-4123-8123-123456789abc", pollAfterSeconds: 5}
+        : {status: "unknown"};
+      if (hostname === "queued.example") status = 202;
+    }
+    else if (path === "/v1/lookups/12345678-1234-4123-8123-123456789abc") body = {status: "unknown", reason: "UNVERIFIED_CANDIDATE_QUEUED", lookupId: "12345678-1234-4123-8123-123456789abc"};
     else if (path === "/v1/reports") {
       body = { id: "report-1", status: "pending" };
       status = 202;
@@ -149,6 +156,14 @@ try {
   assert.deepEqual(JSON.parse(requests.at(-1).body), {
     hostname: "old.example",
   });
+  await page.getByLabel("The old hostname").fill("queued.example");
+  await page.getByRole("button", {name: "Look up hostname"}).click();
+  await page.getByRole("heading", {name: "A discovery check is queued"}).waitFor();
+  assert.equal(requests.filter(r => r.method === "GET" && r.path.startsWith("/v1/lookups/")).length, 0, "lookup status must not poll in the background");
+  await page.getByRole("button", {name: "Check lookup status"}).click();
+  await page.getByRole("heading", {name: "Candidates need review"}).waitFor();
+  assert.equal(requests.at(-1).method, "GET");
+  assert.equal(await page.locator(".lookup-result .domain").count(), 0, "unverified discovery must not display an approved destination");
   await page
     .getByRole("button", { name: "Know about a move? Submit a report" })
     .click();

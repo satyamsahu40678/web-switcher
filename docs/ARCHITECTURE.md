@@ -10,6 +10,7 @@ Web Switcher follows an explicitly selected local mapping or a signed, reviewed 
 | `packages/security/` | Closed signed-record validation, browser Web Crypto ES256 verification, sequence/digest memory, experimental owner CLI | Signature authenticity does not establish website identity |
 | `apps/web/` | React public lookup/report interface and review/publish console | Same-origin session authentication; untrusted evidence is rendered as text |
 | `backend/` | Java 21/Spring API, JDBC/Flyway persistence, review records, durable budgets, signed catalog publication and audit | Public submissions never directly become active routes |
+| Separate `worker` profile | Durable leased discovery jobs and bounded internal fetcher calls | No HTTP listener, OIDC client or publishing key; observations only enter pending review |
 | `fetcher/` | Separately authenticated, bounded HTTPS probe process | No DB or registry signing credentials; deployment must also constrain egress |
 | `research/` | Preserved feasibility experiments and historical results | Synthetic demonstrations are not real-world effectiveness results |
 | `infra/` | Local demo containers and backup/release support | A configuration file is not evidence of deployed isolation |
@@ -46,6 +47,8 @@ flowchart LR
 
 Pending reviewer decisions and activated catalog data stay separate. Catalog publication uses a monotonically increasing sequence and immutable signed bytes. A client remembers sequence plus digest and rejects rollback or same-sequence conflicts. A lower environment or staging key must never become a production trust anchor merely because the same API serves it.
 
+Optional discovery follows an explicit hostname lookup through a durable job, a separate non-web worker and the isolated fetcher. A cross-origin redirect observation can create a pending candidate; the public lookup still returns `unknown`. It cannot activate a family or bypass independent review/publication. [Discovery](DISCOVERY.md) documents limits, leases and abstention; [database isolation](DISCOVERY_DATABASE.md) documents the opt-in PostgreSQL worker role. The default public deployment keeps this network work disabled.
+
 The local demo creates its own persistent signing key and synthetic `.test` family. That key is not a production root. Outside demo, `APP_ROLE=api` refuses a private publishing key and `APP_ROLE=publisher` requires one. An API process without a key cannot publish. Startup and endpoint role checks exist, but OS identity, distinct DB privileges, immutable database grants and a key-isolated publisher deployment remain production gates.
 
 ## Data and network policy
@@ -53,3 +56,5 @@ The local demo creates its own persistent signing key and synthetic `.test` fami
 An explicit public lookup sends a hostname only; it still discloses the requester's IP to the service. Reports contain two hostnames and a free-text reason, so users must omit private data. There is no universal discovery service, automated trust promotion, or client browsing-history upload.
 
 The fetcher validates every DNS answer, pins allowed addresses through its transport, preserves TLS hostname verification and bounds redirects, bytes and time. A deployed firewall/proxy must independently block private, metadata and application networks. Its supported direct-connect model cannot prove the upstream peer IP through an arbitrary HTTP CONNECT proxy. Public crawling is not enabled merely by building its JAR.
+
+The [novelty and evidence report](NOVELTY_AND_EVIDENCE.md) identifies which continuity mechanisms are implemented, their test boundaries and the untested owner/graph research hypothesis. Established signatures, redirect rules and database leases are building blocks rather than new cryptographic or distributed-systems inventions.

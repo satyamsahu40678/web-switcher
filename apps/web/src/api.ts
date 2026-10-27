@@ -39,6 +39,9 @@ export type Lookup = {
   trustClass?: string;
   catalogSequence?: number;
   requiresConfirmation?: boolean;
+  lookupId?: string;
+  pollAfterSeconds?: number;
+  reason?: string;
 };
 let csrf: { token: string; header: string } | null = null;
 export function rememberCsrf(session: Session) {
