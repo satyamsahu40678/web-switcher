@@ -18,7 +18,7 @@ The current target is a useful local extension plus a runnable reviewed-registry
 | SIG schemas/ES256/freshness/rollback | `packages/security/`, Java signer and compatibility checks | Trust anchor installation and production key lifecycle need operator configuration |
 | DISC safe network probes | `fetcher/` source/tests | Application checks do not prove deployed egress enforcement; no universal discovery claim |
 | NOV experimental owner records | `packages/security/owner-cli.mjs` | Signing/verification tools are not completed enrollment, domain-control proof or recovery lifecycle |
-| OPS CI/deployment/backup support | `.github/workflows/platform.yml`, `infra/`, deployment/release docs | Definitions are not evidence of cloud execution, public deployment or a successful restore |
+| OPS CI/deployment/backup support | `.github/workflows/platform.yml`, `infra/`, deployment/release docs | All six platform CI jobs passed for the linked source revision. Release image publication and approved host deployment remain separate unexecuted operations |
 | Research and P4/P5 | Original plan and `research/` | Synthetic prior experiments only; new effectiveness studies, browser ports and stores remain open |
 
 ## Fresh validation ledger
@@ -34,20 +34,24 @@ The following results belong to the reconstructed source and current validation 
 | Java fetcher/SSRF/bounds tests | 65 passed with zero skips/failures; authenticated loopback fixtures and injected safe transports, not deployed public egress |
 | Java-to-browser signature compatibility | Live Java ES256 catalogs verified with the browser-compatible WebCrypto module; modified signatures rejected; full HTTP demo passed 11 checks including publication/revocation |
 | React TypeScript and production build | Passed; actual Chromium mocked API-contract suite and read-only live API/login UI suite passed; desktop screenshots inspected and mobile overflow check passed |
-| Current Chromium extension navigation suite | Managed local browser blocks development extensions. Hosted CI exposed and fixed a fixture-module startup error; a subsequent browser failure remains under diagnosis. No native extension pass claimed |
+| Current Chromium extension navigation suite | All 19 hosted Chromium checks passed, including source matching, expiry, POST/iframe exclusion, sensitive-link confirmation, loops, restart persistence, origin-only receipts and removal. The fixture uses pregranted required source permissions; native optional permission dialogs remain a separate gate |
 | Manifest/syntax/package inspection | Passed; dist/web-switcher-0.2.0.zip built with fixture mode disabled, no embedded private keys or default remote trust |
 | Real web browser end-to-end | Eight checks passed without response mocks against the actual Compose stack: report, review, independent publication, Java/WebCrypto verification, lookup, revocation and abstention |
 | Staging deployment safety | Seven controlled deployment/rollback/configuration checks and eight PostgreSQL role/bootstrap checks passed; public host/OIDC/TLS deployment remains unexecuted |
 | Backup/restore failure guards | Six hermetic producer/encryption/target guard checks passed; no live database or cryptographic restore claim |
 | Local Compose syntax | `docker compose -f infra/compose/local.yml config --quiet` passed |
 | Container build/runtime | Web/API images built with verified TLS/artifacts and optional session CA secret; loopback Caddy static/security-header checks and 11 live API checks passed, plus immutable catalog persistence after API restart (`test-results/container-http-demo.json`) |
-| PostgreSQL production privileges/restore | Not executed; the functional PostgreSQL test uses a disposable development role and does not establish privilege separation or encrypted restore |
+| PostgreSQL staging privileges and restore | Eight real PostgreSQL bootstrap/grant checks passed locally and in CI: API cannot publish or advance the release sequence, releases/audit are immutable to runtime roles, schema changes are denied, repeated bootstrap preserves state, credential rotation/drift is refused. Hosted-role validation and encrypted off-host restore remain unexecuted |
 | Actual Chrome/Edge native permissions and stores | Not executed |
 | Reusable cloud setup script | scripts/setup-cloud.sh executed successfully end to end after correcting the npm cache to a writable directory; install_script and start_skill saved in the environment draft |
-| GitHub publication and CI | Feature branch published. JavaScript, Java and live API jobs passed; hosted extension-browser acceptance still failed and is under diagnosis. Expanded PostgreSQL/full-stack/deployment CI is being added; see the actual GitHub run before claiming complete CI success |
+| GitHub publication and CI | Feature branch published. All six jobs passed for source `27e419b69a7f8d16d3ee67ddc6d6f64c7242f869`: JavaScript, Java, Chromium browser, PostgreSQL, live API and full container stack. [Verified run](https://github.com/satyamsahu40678/web-switcher/actions/runs/40446858593); [recorded evidence](validation/ci-27e419b.json) |
 
 ## Outstanding gates
 
-The production account/domain/OIDC configuration, key-isolated publisher, database grants, private network/firewall verification, encrypted off-host restore, real-browser native permission/lifecycle tests, store identities/submissions and consenting-owner pilot remain necessary before a production launch. Public discovery providers, owner enrollment/key recovery, temporal graph evaluation and the research dataset/measurements are not completed by the local demo.
+The production account/domain/OIDC configuration, deployed key-isolated publisher/private gateway, host-level database privilege verification, private network/firewall verification, encrypted off-host restore, actual Chrome/Edge native optional-permission/lifecycle tests, store identities/submissions and consenting-owner pilot remain necessary before a production launch. Public discovery providers, owner enrollment/key recovery, temporal graph evaluation and the research dataset/measurements are not completed by the local demo.
 
 The repository's chosen license remains an owner decision. Bundled maintained dependencies have their own licenses; do not claim an unselected project license or copy unreviewed competitor code.
+
+## Delivery sequence
+
+The release workflow is implemented, with protected-main/tag and exact-SHA green-CI gates, digest-pinned image manifests, SBOM/provenance generation, verification of the published candidate images, and an approval-protected staging deployment with strict SSH host-key verification, HTTPS/no-demo/readiness checks and prior-image rollback. It has not published release images or deployed a public host. Follow [the deployment guide](DEPLOYMENT.md) after supplying the required host, owned domain, OIDC identities, private publisher gateway and securely provisioned keys/secrets. Broader automatic discovery, owner enrollment/recovery and research evaluation are still roadmap items.

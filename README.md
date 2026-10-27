@@ -67,10 +67,15 @@ A default build trusts no remote registry. To package a reviewed registry, provi
 npm test                              # policy, schema, crypto and mocked worker tests
 npm run check                         # manifest, fixture exclusion, syntax and CSP
 npm --prefix apps/web run test:browser # Chromium UI contract test; API mocked
+npm --prefix apps/web run test:e2e-browser # actual loopback demo UI/API/database; no mocks
 npm run test:http                      # live demo API + Java/WebCrypto interoperability
 npm run test:browser                   # real unpacked-extension navigation harness
 bash infra/backup/test.sh              # backup failure/restore guard tests
+python3 infra/deploy/test-deploy.py     # protected deployment/rollback guards
+python3 infra/deploy/test-db-grants.py  # disposable PostgreSQL role/bootstrap checks (Docker)
 ```
+
+The real browser E2E test requires the demo app running on loopback; set `LIVE_WEB_BASE` to its origin (for example, the container demo on port 8088). It creates and revokes its own unique synthetic family and refuses non-demo servers.
 
 The HTTP demo test mutates **synthetic demo data**, including a revocation; use a fresh isolated demo working directory for each full run. Set `CHROMIUM_PATH` for an installed browser where required. The real extension navigation harness requires a browser/environment that allows unpacked extensions. A managed-browser policy block is a failed readiness gate, not a passing test.
 
@@ -86,3 +91,5 @@ The HTTP demo test mutates **synthetic demo data**, including a revocation; use 
 - [Owner signing tools](packages/security/README.md)
 
 Public deployment, production identities/keys, private egress enforcement, independent database privileges, native Chrome/Edge acceptance, browser stores, owner pilots and research effectiveness measurements remain explicit release gates. GitHub workflow definitions do not establish that CI has run.
+
+The platform pipeline has passed all six hosted CI jobs, including the 19-check native Chromium extension suite and the real container/browser journey. [Recorded validation](docs/IMPLEMENTATION_STATUS.md) identifies the exact tested revision. The separate [release pipeline](.github/workflows/release.yml) requires a protected main/tag and successful CI for the exact source SHA, verifies published digest-pinned candidate images, and permits staging deployment only through a configured approval-protected environment. See [deployment setup](docs/DEPLOYMENT.md) before enabling it.
