@@ -34,9 +34,9 @@ jobs:
       - name: Test and package extension, contracts, and web UI
         run: |
           npm test
-          node --test packages/security/*.test.mjs
           npm run check
           infra/backup/test.sh
+          python3 infra/deploy/test-deploy.py
           npm --prefix apps/web run build
           npm run package
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -145,3 +145,106 @@ jobs:
           path: |
             test-results/http-demo.json
             test-results/live-api.log
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: webswitcher_test
+          POSTGRES_PASSWORD: ci-ephemeral-database-only
+          POSTGRES_DB: webswitcher_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U webswitcher_test -d webswitcher_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify the real PostgreSQL schema and API transactions
+        env:
+          TEST_DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/webswitcher_test
+          TEST_DATABASE_USER: webswitcher_test
+          TEST_DATABASE_PASSWORD: ci-ephemeral-database-only
+        run: ./backend/mvnw -f backend/pom.xml --batch-mode --no-transfer-progress verify
+      - name: Verify append-only releases, separated database roles and repeatable bootstrap
+        run: python3 infra/deploy/test-db-grants.py
+      - name: Preserve PostgreSQL test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: postgres-test-results
+          retention-days: 14
+          if-no-files-found: warn
+          path: backend/target/surefire-reports/
+  stack-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/web/package-lock.json
+      - name: Install locked browser test dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npm --prefix apps/web ci --no-audit --no-fund
+          npx playwright install --with-deps chromium --no-shell
+      - name: Build and start the real application containers
+        run: |
+          docker compose -p web-switcher-ci -f infra/compose/local.yml build
+          docker compose -p web-switcher-ci -f infra/compose/local.yml up -d --no-build
+      - name: Verify readiness, HTTP contracts, and real browser user journeys
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8088/health/ready >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail --max-time 5 http://127.0.0.1:8088/health/ready >/dev/null
+          export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
+          API_BASE=http://127.0.0.1:8088 node tests/http-demo.mjs
+          LIVE_WEB_BASE=http://127.0.0.1:8088 node apps/web/tests/e2e-browser.mjs
+          curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-before-restart.jws
+          docker compose -p web-switcher-ci -f infra/compose/local.yml restart api
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8088/health/ready >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-after-restart.jws
+          cmp test-results/catalog-before-restart.jws test-results/catalog-after-restart.jws
+      - name: Capture container evidence and clean the disposable stack
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p test-results
+          docker compose -p web-switcher-ci -f infra/compose/local.yml logs --no-color > test-results/container-stack.log 2>&1 || true
+          docker compose -p web-switcher-ci -f infra/compose/local.yml down --volumes --remove-orphans
+      - name: Preserve full stack evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stack-end-to-end-results
+          retention-days: 14
+          if-no-files-found: warn
+          path: test-results/

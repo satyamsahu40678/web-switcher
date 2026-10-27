@@ -183,9 +183,10 @@ test('startup discards interrupted pending generation and safely recovers corrup
 });
 
 const signingKeys = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-function signedCatalog(sequence) {
+function signedCatalog(sequence, modify = () => {}) {
   const issuedAt = new Date(now() - 3600000).toISOString(); const expiresAt = new Date(now() + 5 * 3600000).toISOString();
   const payload = { schemaVersion: 1, bundleSequence: sequence, issuedAt, expiresAt, minClientVersion: '0.2.0', policyVersion: 1, families: [{ id: 'docs', name: 'Documentation' }], aliases: [{ sourceOrigin: 'https://retired-docs.com', familyId: 'docs' }], decisions: [{ familyId: 'docs', destinationOrigin: 'https://current-docs.com', trustClass: 'registry_reviewed', validUntil: expiresAt, pathPolicy: { type: 'preserve', publicPrefixes: ['/docs/'] }, reasonCodes: ['REVIEWED_CONTINUITY'], requiresConfirmation: true }], revocations: [] };
+  modify(payload);
   const encode = value => encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
   const input = `${encode({ alg: 'ES256', typ: 'web-switcher-catalog+jws', kid: 'test-registry-1' })}.${encode(payload)}`;
   return `${input}.${encodeBase64Url(sign('sha256', Buffer.from(input), { key: signingKeys.privateKey, dsaEncoding: 'ieee-p1363' }))}`;
@@ -211,4 +212,44 @@ test('clear local data preserves signature rollback memory and removes tab bypas
   sessionRules = [{ id: 1000007 }]; chromeMock.storage.session.values = { bypasses: { 7: { ruleId: 1000007, expiresAt: now() + 1000 } } };
   const cleared = await send({ type: 'CLEAR_LOCAL_DATA' }); assert.equal(cleared.ok, true, cleared.error);
   assert.deepEqual(chromeMock.storage.local.values.catalogHighwater, highwater); assert.equal(chromeMock.storage.local.values.catalogRecord, undefined); assert.equal(chromeMock.storage.local.values.config.mappings.length, 0); assert.equal(dynamicRules.length, 0); assert.equal(sessionRules.length, 0);
+});
+
+
+test('signed aliases share a per-family loop guard without merging local intent or other tabs', async () => {
+  reset(); grant(); trustTestKey(); grant('https://older-docs.com');
+  const catalog = signedCatalog(1, value => {
+    value.aliases.push({ sourceOrigin: 'https://older-docs.com', familyId: 'docs' });
+    value.decisions[0].requiresConfirmation = false;
+  });
+  assert.equal((await send({ type: 'importCatalog', jws: catalog })).ok, true);
+  const generation = chromeMock.storage.local.values.config.generation;
+  const signedEnvelope = (index, origin) => ({ generation, mappingId: `registry-${index}`, source: origin + '/docs/start' });
+  const first = await send({ type: 'resolve', envelope: signedEnvelope(0, 'https://retired-docs.com') }, routeSender);
+  assert.equal(first.data.status, 'ready'); assert.equal(first.data.familyId, 'docs');
+  const sibling = await send({ type: 'resolve', envelope: signedEnvelope(1, 'https://older-docs.com') }, routeSender);
+  assert.equal(sibling.data.reason, 'loop', 'a destination bouncing into a sibling alias cannot switch the family again');
+  const otherTab = await send({ type: 'resolve', envelope: signedEnvelope(1, 'https://older-docs.com') }, { ...routeSender, tab: { id: 8 } });
+  assert.equal(otherTab.data.status, 'ready', 'independent tabs retain independent attempts');
+  const local = await send({ type: 'resolve', envelope: { ...envelope(), generation } }, routeSender);
+  assert.equal(local.data.status, 'ready', 'manual mappings are not assigned registry family identity'); assert.equal(local.data.familyId, undefined);
+  chromeMock.storage.session.values.attempts['7:registry:docs'] = now() - 15001;
+  const expiredAttempt = await send({ type: 'resolve', envelope: signedEnvelope(1, 'https://older-docs.com') }, routeSender);
+  assert.equal(expiredAttempt.data.status, 'ready', 'a new family attempt is allowed after the bounded guard window');
+});
+
+test('manual and confirmation previews of signed aliases retain the same family loop protection', async () => {
+  reset(); trustTestKey(); grant('https://older-docs.com');
+  assert.equal((await send({ type: 'importCatalog', jws: signedCatalog(1, value => value.aliases.push({ sourceOrigin: 'https://older-docs.com', familyId: 'docs' })) })).ok, true);
+  const generation = chromeMock.storage.local.values.config.generation;
+  const previewEnvelope = (index, source) => ({ generation, mappingId: `registry-${index}`, source });
+  const firstEnvelope = previewEnvelope(0, 'https://retired-docs.com/docs/start');
+  const first = await send({ type: 'resolve', envelope: firstEnvelope }, routeSender);
+  assert.equal(first.data.reason, 'confirmation'); assert.equal(first.data.familyId, 'docs');
+  const confirmed = await send({ type: 'confirmRoute', envelope: firstEnvelope, expectedUrl: first.data.homepage }, routeSender);
+  assert.equal(confirmed.data.status, 'ready');
+  const sensitiveEnvelope = previewEnvelope(1, 'https://older-docs.com/account?token=synthetic');
+  const sensitive = await send({ type: 'resolve', envelope: sensitiveEnvelope }, routeSender);
+  assert.equal(sensitive.data.reason, 'manual'); assert.equal(sensitive.data.familyId, 'docs');
+  const second = await send({ type: 'confirmRoute', envelope: sensitiveEnvelope, expectedUrl: sensitive.data.homepage }, routeSender);
+  assert.equal(second.data.reason, 'loop', 'confirmation must not bypass an already-used family attempt');
 });

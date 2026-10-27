@@ -17,11 +17,15 @@ export function combineConfig(local, catalog, options = {}) {
 }
 
 export function resolveWithCatalog(config, envelope, now, catalog, options = {}) {
-  const result = resolveRoute(config, envelope, now, options);
-  if (result.status !== 'ready' || config.mappings.find(mapping => mapping.id === envelope.mappingId)?.provenance !== 'registry') return result;
+  let result = resolveRoute(config, envelope, now, options);
+  if (config.mappings.find(mapping => mapping.id === envelope.mappingId)?.provenance !== 'registry') return result;
   const alias = catalog?.aliases[Number(envelope.mappingId.slice('registry-'.length))];
   const decision = catalog?.decisions.find(item => item.familyId === alias?.familyId);
   if (!decision) return {status: 'blocked', reason: 'unknown'};
+  // Only signed registry provenance supplies family identity. Carry it through
+  // manual previews and click-time confirmation as well as automatic routing.
+  result = {...result, familyId: decision.familyId};
+  if (result.status !== 'ready') return result;
   const source = new URL(envelope.source);
   const policy = decision.pathPolicy;
   if (policy.type === 'preserve' && !policy.publicPrefixes.some(prefix => source.pathname.startsWith(prefix))) {

@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1",
     "test:browser": "node tests/browser.mjs",
-    "test:live-browser": "node tests/live-browser.mjs"
+    "test:live-browser": "node tests/live-browser.mjs",
+    "test:e2e-browser": "node tests/e2e-browser.mjs"
   },
   "dependencies": {
     "react": "19.1.1",

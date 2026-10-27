@@ -1,0 +1,272 @@
+name: Publish verified images and deploy staging
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Full main-branch source SHA with a successful Web Switcher platform run'
+        required: true
+        type: string
+      deploy_staging:
+        description: 'Deploy published digests to the configured, approval-protected staging host'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-switcher-release
+  cancel-in-progress: false
+
+jobs:
+  verify-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a protected release ref and an exact main-branch source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_PROTECTED" == true ]] || { echo 'Configure protected main and version-tag rules before publishing images.' >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$GITHUB_REF" == refs/heads/main ]] || { echo 'Dispatch releases from protected main.' >&2; exit 1; }
+            revision="$REQUESTED_SHA"
+          else
+            [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Use a protected vMAJOR.MINOR.PATCH tag.' >&2; exit 1; }
+            revision="$(git rev-parse "$GITHUB_SHA^{commit}")"
+          fi
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo 'A full immutable source SHA is required.' >&2; exit 1; }
+          git merge-base --is-ancestor "$revision" origin/main || { echo 'Release source must already be merged into main.' >&2; exit 1; }
+          mapfile -t migrations < <(git ls-tree -r --name-only "$revision" -- backend/src/main/resources/db/migration)
+          [[ ${#migrations[@]} == 1 && "${migrations[0]}" == backend/src/main/resources/db/migration/V1__registry.sql ]] || { echo 'This deployment path supports schemaV1 only. Implement a reviewed migration plan before releasing additional migrations.' >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            source_version="$(git show "$revision:package.json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')"
+            [[ "$GITHUB_REF" == "refs/tags/v$source_version" ]] || { echo 'Version tag must match the source package.json version.' >&2; exit 1; }
+          fi
+          printf 'sha=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+      - name: Require the complete CI workflow to have passed on this exact SHA
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        with:
+          script: |
+            const {data} = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'platform.yml', head_sha: process.env.SOURCE_SHA,
+              status: 'completed', per_page: 100
+            });
+            const passed = data.workflow_runs.some(run =>
+              run.head_sha === process.env.SOURCE_SHA && run.conclusion === 'success');
+            if (!passed) core.setFailed('No successful complete platform workflow exists for this exact source SHA.');
+  images:
+    needs: verify-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.verify-source.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish API image from tested source
+        id: api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: infra/Dockerfile.backend
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/satyamsahu40678/web-switcher-api:sha-${{ needs.verify-source.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/satyamsahu40678/web-switcher
+            org.opencontainers.image.revision=${{ needs.verify-source.outputs.sha }}
+      - name: Publish web image from tested source
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: infra/Dockerfile.web
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/satyamsahu40678/web-switcher-web:sha-${{ needs.verify-source.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/satyamsahu40678/web-switcher
+            org.opencontainers.image.revision=${{ needs.verify-source.outputs.sha }}
+      - name: Package immutable deployment inputs
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.verify-source.outputs.sha }}
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir release-artifact
+          python3 - <<'PY'
+          import json,os,pathlib
+          data={'schemaVersion':1,'sourceCommit':os.environ['SOURCE_SHA'],
+                'apiImage':'ghcr.io/satyamsahu40678/web-switcher-api@'+os.environ['API_DIGEST'],
+                'webImage':'ghcr.io/satyamsahu40678/web-switcher-web@'+os.environ['WEB_DIGEST']}
+          pathlib.Path('release-artifact/release.json').write_text(json.dumps(data,indent=2)+'\n')
+          PY
+          python3 infra/deploy/release-manifest.py release-artifact/release.json
+          git archive --format=tar HEAD infra backend/src/main/resources/db/migration/V1__registry.sql | gzip -n > release-artifact/release-input.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ needs.verify-source.outputs.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: release-artifact/
+  verify-images:
+    needs: [verify-source, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.verify-source.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/web/package-lock.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ needs.verify-source.outputs.sha }}
+          path: release-artifact
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve only the published immutable image candidates
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.verify-source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 infra/deploy/release-manifest.py release-artifact/release.json --env > release-artifact/images.env
+          python3 - <<'PY'
+          import json,os,pathlib
+          data=json.loads(pathlib.Path('release-artifact/release.json').read_text())
+          assert data['sourceCommit']==os.environ['EXPECTED_SOURCE_SHA'], 'Image manifest source differs from verified CI source'
+          # Override only image references. --no-build below forbids a source rebuild.
+          pathlib.Path('release-artifact/images.yml').write_text('services:\n  api:\n    image: '+data['apiImage']+'\n  web:\n    image: '+data['webImage']+'\n')
+          PY
+          docker compose -p web-switcher-release-check -f infra/compose/local.yml -f release-artifact/images.yml pull api web
+      - name: Install the exact source's locked browser dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npm --prefix apps/web ci --no-audit --no-fund
+          npx playwright install --with-deps chromium --no-shell
+      - name: Test the published images end to end before staging promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          stack=(docker compose -p web-switcher-release-check -f infra/compose/local.yml -f release-artifact/images.yml)
+          "${stack[@]}" up -d --no-build
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8088/health/ready >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail --max-time 5 http://127.0.0.1:8088/health/ready >/dev/null
+          export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
+          API_BASE=http://127.0.0.1:8088 node tests/http-demo.mjs
+          LIVE_WEB_BASE=http://127.0.0.1:8088 node apps/web/tests/e2e-browser.mjs
+          curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-before-restart.jws
+          "${stack[@]}" restart api
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8088/health/ready >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail --max-time 5 http://127.0.0.1:8088/v1/catalog/current > test-results/catalog-after-restart.jws
+          cmp test-results/catalog-before-restart.jws test-results/catalog-after-restart.jws
+      - name: Preserve image acceptance evidence and clean the disposable stack
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p test-results
+          docker compose -p web-switcher-release-check -f infra/compose/local.yml -f release-artifact/images.yml logs --no-color > test-results/image-stack.log 2>&1 || true
+          docker compose -p web-switcher-release-check -f infra/compose/local.yml -f release-artifact/images.yml down --volumes --remove-orphans
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: verified-image-evidence-${{ needs.verify-source.outputs.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: test-results/
+  staging:
+    needs: [verify-source, images, verify-images]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_staging && vars.STAGING_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ needs.verify-source.outputs.sha }}
+          path: release-artifact
+      - name: Deploy only to the configured host with its independently verified SSH host key
+        shell: bash
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          STAGING_USER: ${{ vars.STAGING_USER }}
+          STAGING_SSH_PORT: ${{ vars.STAGING_SSH_PORT || '22' }}
+          STAGING_DEPLOY_ROOT: ${{ vars.STAGING_DEPLOY_ROOT }}
+          STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          STAGING_SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+          SOURCE_SHA: ${{ needs.verify-source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+$ && "$STAGING_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo 'Configure a valid staging host and dedicated deploy user.' >&2; exit 1; }
+          [[ "$STAGING_SSH_PORT" =~ ^[0-9]+$ && "$STAGING_SSH_PORT" -ge 1 && "$STAGING_SSH_PORT" -le 65535 ]] || exit 1
+          [[ "$STAGING_DEPLOY_ROOT" =~ ^/[a-zA-Z0-9/_-]+$ && "$STAGING_DEPLOY_ROOT" != / ]] || { echo 'Configure a dedicated absolute deployment root.' >&2; exit 1; }
+          [[ -n "$STAGING_SSH_PRIVATE_KEY" && -n "$STAGING_SSH_KNOWN_HOSTS" ]] || { echo 'Provision the deployment key and independently verified known_hosts entry.' >&2; exit 1; }
+          ssh_dir="$(mktemp -d "$RUNNER_TEMP/web-switcher-ssh-XXXXXXXX")"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          umask 077
+          printf '%s\n' "$STAGING_SSH_PRIVATE_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$STAGING_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          ssh_options=(-F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" -i "$ssh_dir/key")
+          destination="$STAGING_USER@$STAGING_HOST"
+          remote_release="$STAGING_DEPLOY_ROOT/releases/$SOURCE_SHA"
+          ssh "${ssh_options[@]}" -p "$STAGING_SSH_PORT" "$destination" "umask 077; test -d '$STAGING_DEPLOY_ROOT/config' && mkdir -p -- '$remote_release'"
+          scp "${ssh_options[@]}" -P "$STAGING_SSH_PORT" release-artifact/release.json release-artifact/release-input.tar.gz "$destination:$remote_release/"
+          ssh "${ssh_options[@]}" -p "$STAGING_SSH_PORT" "$destination" "tar --extract --gzip --file '$remote_release/release-input.tar.gz' --directory '$remote_release' --no-same-owner --no-same-permissions && bash '$remote_release/infra/deploy/deploy-staging.sh' '$remote_release' '$STAGING_DEPLOY_ROOT/config'"

@@ -1,0 +1,140 @@
+# Controlled staging pilot only. Configure DNS/TLS/OIDC and secret files first.
+# No demo profile, database port, publisher port, or fetcher is exposed.
+name: web-switcher-staging
+x-runtime: &runtime
+  image: ${API_IMAGE:?Use a verified digest-pinned release manifest}
+  user: "${RUNTIME_UID:?Set protected-file owner UID}:${RUNTIME_GID:?Set protected-file owner GID}"
+  read_only: true
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  mem_limit: 768m
+  networks: [database, oidc-egress]
+x-api-env: &api-env
+  BIND_ADDRESS: 0.0.0.0
+  PORT: 8080
+  APP_ROLE: api
+  APP_PUBLIC_ORIGIN: ${APP_PUBLIC_ORIGIN:?An owned HTTPS origin is required}
+  DATABASE_URL: jdbc:postgresql://postgres:5432/webswitcher
+  DATABASE_USER: webswitcher_api
+  SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+  SERVER_FORWARD_HEADERS_STRATEGY: framework
+  SPRING_FLYWAY_ENABLED: 'false'
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_WEB_PROVIDER: web
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_WEB_CLIENT_ID: ${OIDC_CLIENT_ID:?OIDC client ID is required}
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_WEB_SCOPE: openid,profile
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_WEB_ISSUER_URI: ${OIDC_ISSUER_URI:?OIDC issuer is required}
+  ADMIN_ALLOWED_SUBJECTS: ${ADMIN_ALLOWED_SUBJECTS:?Reviewer subject allowlist is required}
+  PUBLISHER_ALLOWED_SUBJECTS: ${PUBLISHER_ALLOWED_SUBJECTS:?Publisher subject allowlist is required}
+  NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},postgres,api,publisher
+  no_proxy: ${no_proxy:-localhost,127.0.0.1},postgres,api,publisher
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Pin a reviewed PostgreSQL 17 image by digest}
+    environment:
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      POSTGRES_USER: webswitcher_owner
+      POSTGRES_DB: webswitcher
+      POSTGRES_PASSWORD_FILE: /run/secrets/OWNER_DATABASE_PASSWORD
+    secrets: [OWNER_DATABASE_PASSWORD]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U webswitcher_owner -d webswitcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    restart: unless-stopped
+  db-bootstrap:
+    image: ${POSTGRES_IMAGE:?Pin a reviewed PostgreSQL 17 image by digest}
+    entrypoint: [/bin/bash, /deployment/bootstrap-db.sh]
+    user: "${RUNTIME_UID:?Set protected-file owner UID}:${RUNTIME_GID:?Set protected-file owner GID}"
+    environment:
+      PGHOST: postgres
+      PGDATABASE: webswitcher
+      PGUSER: webswitcher_owner
+    secrets: [OWNER_DATABASE_PASSWORD, API_DATABASE_PASSWORD, PUBLISHER_DATABASE_PASSWORD]
+    volumes:
+      - ../deploy/bootstrap-db.sh:/deployment/bootstrap-db.sh:ro
+      - ../../backend/src/main/resources/db/migration/V1__registry.sql:/deployment/V1__registry.sql:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [database]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: 'no'
+  api:
+    <<: *runtime
+    environment: *api-env
+    networks: [database, oidc-egress, front]
+    secrets:
+      - source: API_DATABASE_PASSWORD
+        target: DATABASE_PASSWORD
+      - source: API_OIDC_CLIENT_SECRET
+        target: spring.security.oauth2.client.registration.web.client-secret
+    depends_on:
+      db-bootstrap: {condition: service_completed_successfully}
+  publisher:
+    <<: *runtime
+    profiles: [publisher]
+    networks: [database, oidc-egress, admin]
+    environment:
+      <<: *api-env
+      APP_ROLE: publisher
+      ADMIN_ALLOWED_SUBJECTS: ''
+      APP_PUBLIC_ORIGIN: ${PUBLISHER_PUBLIC_ORIGIN:?An owned private HTTPS publisher origin is required}
+      DATABASE_USER: webswitcher_publisher
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_WEB_CLIENT_ID: ${PUBLISHER_OIDC_CLIENT_ID:?Use a separate private publisher OIDC client}
+      PUBLISHING_PRIVATE_KEY_FILE: /run/secrets/publisher-private.pk8
+      PUBLISHING_KEY_ID: ${PUBLISHING_KEY_ID:?Set the independently pinned publishing key ID}
+    secrets:
+      - source: PUBLISHER_DATABASE_PASSWORD
+        target: DATABASE_PASSWORD
+      - source: PUBLISHER_OIDC_CLIENT_SECRET
+        target: spring.security.oauth2.client.registration.web.client-secret
+      - source: PUBLISHING_PRIVATE_KEY
+        target: publisher-private.pk8
+    depends_on:
+      db-bootstrap: {condition: service_completed_successfully}
+  web:
+    image: ${WEB_IMAGE:?Use a verified digest-pinned release manifest}
+    ports: ["80:8080", "443:8443"]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set the owned DNS hostname}
+      ACME_EMAIL: ${ACME_EMAIL:?Set the certificate contact email}
+      SOURCE_COMMIT: ${SOURCE_COMMIT:?Release commit is required}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},api
+      no_proxy: ${no_proxy:-localhost,127.0.0.1},api
+    volumes:
+      - ../caddy/Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api]
+    networks: [ingress, front]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    restart: unless-stopped
+networks:
+  ingress: {}
+  database: {internal: true}
+  front: {internal: true}
+  admin: {internal: true}
+  oidc-egress: {}
+volumes:
+  postgres-data: {}
+  caddy-data: {}
+  caddy-config: {}
+secrets:
+  OWNER_DATABASE_PASSWORD: {file: '${DEPLOY_CONFIG_DIR:?Set protected host config directory}/owner-database-password'}
+  API_DATABASE_PASSWORD: {file: '${DEPLOY_CONFIG_DIR:?Set protected host config directory}/api-database-password'}
+  PUBLISHER_DATABASE_PASSWORD: {file: '${DEPLOY_CONFIG_DIR:?Set protected host config directory}/publisher-database-password'}
+  API_OIDC_CLIENT_SECRET: {file: '${DEPLOY_CONFIG_DIR:?Set protected host config directory}/api-oidc-client-secret'}
+  PUBLISHER_OIDC_CLIENT_SECRET: {file: '${DEPLOY_CONFIG_DIR:?Set protected host config directory}/publisher-oidc-client-secret'}
+  PUBLISHING_PRIVATE_KEY: {file: '${DEPLOY_CONFIG_DIR:?Set protected host config directory}/publisher-private.pk8'}

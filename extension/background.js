@@ -75,7 +75,9 @@ function fromPage(sender, path) {
 }
 async function recordSwitch(result, sender) {
   const {attempts = {}, receiptTabs = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs']);
-  const key = `${sender.tab.id}:${result.mappingId}`;
+  // Different retired aliases of one signed family share the same attempt.
+  // Explicit local mappings retain their independent user-configured identity.
+  const key = `${sender.tab.id}:${result.familyId ? `registry:${result.familyId}` : result.mappingId}`;
   const now = Date.now();
   if (loopDetected(attempts[key], now)) return {status: 'blocked', reason: 'loop'};
   const pruned = Object.fromEntries(Object.entries(attempts).filter(([, at]) => now >= at && now - at < 15000));

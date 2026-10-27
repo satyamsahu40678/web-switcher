@@ -91,3 +91,71 @@ Move encrypted output and checksums to a restricted off-host destination through
 `infra/backup/restore.sh /absolute/path/to/backup.dump.age` requires `PGHOST`, `PGUSER`, `PGDATABASE`, a separately protected `AGE_IDENTITY_FILE`, and `RESTORE_CONFIRM_DATABASE` matching the exact target. It refuses nonempty databases and performs a single-transaction restore with errors fatal. Check the backup checksum before decryption, then run migration/API/catalog checks on the restored instance before promotion. Never restore onto a running production database as a routine drill.
 
 No RPO/RTO or successful production restore is claimed until the complete encrypted off-host pipeline has been exercised on a clean target and evidence recorded.
+
+## Verified image delivery and approved staging deployment
+
+The implemented delivery path is **tested source → candidate image digests → exact-image acceptance → approved staging**. `.github/workflows/release.yml` defines this path; adding its definition does not mean a release or deployment has run.
+
+1. Merge the tested implementation into `main` through a reviewed pull request. Require the complete `Web Switcher platform` workflow before merging. Configure GitHub branch protection for `main` and a protected version-tag rule for `v*`.
+2. Create a GitHub environment named `release` with required reviewers and permitted protected release refs. The image job has package-write permission; the source verification job only reads code and workflow results.
+3. A protected `vMAJOR.MINOR.PATCH` tag triggers image delivery. Its version must match that source's root `package.json`. Alternatively dispatch the release workflow **from protected main** with a full source SHA. The source must be reachable from main, and the complete platform workflow must already have succeeded on that exact SHA. A different successful commit, a subset of green jobs, or a queued run is insufficient.
+4. The workflow builds API and web images, publishes them to `ghcr.io/satyamsahu40678/web-switcher-api` and `.../web-switcher-web`, and records their immutable `sha256` digests in `release.json`. SHA tags are convenient labels; deployments use digests rather than assuming tags cannot change. Build provenance and SBOM generation are enabled.
+5. The `verify-images` job pulls **those published digests**, starts an isolated loopback demo with `--no-build`, and runs the HTTP/signature suite and real browser report/review/publish/revoke journeys. It also checks catalog bytes across an API restart. Candidate images are not staging-approved until this job passes. Evidence and exact deployment inputs are uploaded as Actions artifacts.
+6. The staging job runs only for manual dispatch with `deploy_staging=true`, repository variable `STAGING_DEPLOY_ENABLED=true`, and approval by the protected GitHub environment named `staging`. A version tag alone does not deploy a host.
+
+This path deliberately refuses additional SQL migrations beyond the current `V1__registry.sql`. The staging bootstrap stores its checksum and refuses changed V1 bytes, unknown schema versions, or an unversioned nonempty database. Future schema changes need an explicit forward migration, compatibility window, tested backup/restore and rollback plan before the release guard is changed. Application image rollback is not database rollback.
+
+### Host prerequisites
+
+Use a dedicated staging Linux VM with Docker Engine/Compose, Python 3, Bash, OpenSSL, curl, `flock`, reviewed immutable PostgreSQL 17 image digest, and an operator-managed backup target. Allocate enough memory for PostgreSQL, API, Caddy and an optional private publisher; the original 4 GiB pilot recommendation is a starting point, not a measured production capacity guarantee.
+
+Create a dedicated non-root deployment user and `/srv/web-switcher` owned by that user. Docker access is effectively privileged host access; limit the deployment key and GitHub environment reviewers accordingly. Provision GHCR pull access on the host if the packages are private, using the host's secret manager and a read-only package credential. Do not copy the GitHub Actions publishing credential into the application.
+
+Create `/srv/web-switcher/config` with mode `0700`. Copy `infra/deploy/runtime.env.example` there as `runtime.env` and replace **every** example with actual settings. `RUNTIME_UID`/`RUNTIME_GID` must match the non-root owner of the protected files. The public hostname and `APP_PUBLIC_ORIGIN` must match an owned HTTPS origin; configure DNS and allow inbound ports 80/443 for Caddy's certificate issuance/renewal. Configure the real OIDC issuer, separate public/private clients and exact callback URIs. Register the public callback as `https://PUBLIC_HOST/login/oauth2/code/web`; register the private publisher callback against its separate origin. Reviewer and publisher subject allowlists must be disjoint.
+
+Provision these files securely in the protected directory; do not put values in `runtime.env`, Git, Actions artifacts, shell history, or chat:
+
+| Host file | Consumer |
+| --- | --- |
+| `owner-database-password` | PostgreSQL bootstrap owner only |
+| `api-database-password` | Keyless public API database identity |
+| `publisher-database-password` | Separate publisher database identity |
+| `api-oidc-client-secret` | Public/admin API OIDC client |
+| `publisher-oidc-client-secret` | Private publisher OIDC client |
+| `publisher-private.pk8` | Publisher-only PKCS8 DER P-256 signing key |
+
+Use independent database passwords of at least 24 random characters, secret files with mode `0400` or `0600`, and ownership matching `RUNTIME_UID`. Write textual secret exports without an extra newline. The Compose runtime uses that explicit non-root UID/GID so file-backed secrets remain readable without making private keys world-readable. The bootstrap reads credentials through files/environment, not process arguments. It refuses an unexpected credential change for existing database identities rather than silently breaking the previous release; password rotation is a separate coordinated operation.
+
+`infra/compose/staging.yml` provides PostgreSQL persistence, an owner-only one-shot V1 schema bootstrap, a keyless public API, TLS Caddy, and an **optional private publisher profile**. The API role cannot update active families, create releases or advance the publication counter. Runtime roles cannot change schema; release rows are insert-only for the publisher, and audit rows are append-only for both identities. Application Flyway is disabled in this staging topology because the controlled bootstrap owns schema creation. The separate functional development setup continues to use Flyway normally.
+
+There is no database host port. Caddy's public route also refuses publication/revocation writes. The publisher holds its own key and OIDC/database credentials, has **no published port**, and is excluded from normal public startup. Before enabling `--profile publisher`, provision and test an authenticated private TLS/admin gateway or VPN path to the private admin network and serve the admin UI against that publisher origin. Public review and private publication do not share in-memory sessions. A private process name alone is not operator access; without that gateway, actual signed publication is intentionally unavailable. The fetcher is excluded until its independent public-only egress boundary is deployed and verified.
+
+### GitHub staging settings
+
+Configure the following in GitHub settings; none contains an application database/signing secret:
+
+| Kind | Name | Purpose |
+| --- | --- | --- |
+| Repository variable | `STAGING_DEPLOY_ENABLED` | Set `true` only after host prerequisites and environment approval rules are ready |
+| Staging environment variable | `STAGING_HOST`, `STAGING_USER` | Dedicated target hostname and deployment account |
+| Staging environment variable | `STAGING_SSH_PORT` | Optional port, default 22 |
+| Staging environment variable | `STAGING_DEPLOY_ROOT` | Dedicated absolute path, for example `/srv/web-switcher` |
+| Staging environment secret | `STAGING_SSH_PRIVATE_KEY` | Dedicated deployment identity |
+| Staging environment secret | `STAGING_SSH_KNOWN_HOSTS` | Independently verified target SSH host key(s) |
+
+Verify the SSH host-key fingerprint through the hosting console or another trusted channel before saving `known_hosts`. The workflow uses `StrictHostKeyChecking=yes`; it never trusts an unauthenticated `ssh-keyscan` result or disables verification. Protect both `release` and `staging` environments with required reviewers and allowed refs. Application/OIDC/database/signing secrets remain on the host rather than being shipped by the deployment workflow.
+
+The approved job copies only versioned deployment inputs and the digest manifest into `/srv/web-switcher/releases/FULL_SHA/`, then invokes:
+
+```sh
+bash /srv/web-switcher/releases/FULL_SHA/infra/deploy/deploy-staging.sh \
+  /srv/web-switcher/releases/FULL_SHA /srv/web-switcher/config
+```
+
+The script validates the immutable image namespace/digests, configuration/secret permissions, private signing-key type, and Compose config before mutations. It serializes deployments with a lock, pulls exact images, validates/bootstrap V1, starts the application, checks real HTTPS database readiness, requires the expected release response header and confirms demo mode is off. State advances only after success. After the first success, the script pins a private fingerprint of the host configuration/secret files and refuses changes during an application-only deployment. Rehearse credential/configuration rotations as separate operator changes; image rollback cannot recover a lost or changed secret. If a previously recorded healthy release exists and the new application fails, it restores prior images and versioned Compose/Caddy configuration using the unchanged protected host settings while preserving database contents; it never runs `down --volumes` or rewinds SQL. Inspect rollback health/logs and handle any database incompatibility manually.
+
+The source and infrastructure helpers were tested locally: seven deployment guard/rollback tests, disposable PostgreSQL grant/idempotency/credential-rotation tests, all-profile Compose validation, and Caddy configuration adaptation. These are not successful public deployment, ACME, real-provider OIDC, private publisher gateway or off-host restore claims. After a first staging deployment, complete those checks plus real signed-catalog refresh and native Chrome/Edge acceptance before considering production promotion.
+
+### Browser extension delivery
+
+Container delivery does not configure or publish a production browser extension. The normal CI extension artifact has fixture mode disabled and no remote trust anchor. Use a separately reviewed production `WS_REGISTRY_KEYS_FILE` and fixed owned HTTPS `WS_REGISTRY_URL` for an approved extension package, verify catalog/rollback/revocation behavior against that deployment, and complete Chrome/Edge native permission/lifecycle and store-review gates. No code or unreviewed registry is downloaded as executable extension logic. Manual local mappings remain useful without an account or deployed registry.

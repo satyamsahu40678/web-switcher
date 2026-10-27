@@ -231,7 +231,23 @@ try {
     assert.equal((await worker.evaluate(() => chrome.declarativeNetRequest.getDynamicRules())).length, 0);
   });
 } catch (error) {
+  const notices = [];
+  for (const page of context?.pages() || []) {
+    try {
+      for (const selector of ['#notice', '#message']) {
+        const node = page.locator(selector);
+        if (await node.count()) notices.push((await node.textContent({timeout: 1000}))?.slice(0, 600));
+      }
+    } catch { /* Failure diagnostics must preserve the original test failure. */ }
+  }
+  if (notices.some(Boolean)) error.message += `; page notices: ${notices.filter(Boolean).join(' | ')}`;
   console.error(`FAIL ${activeCheck}: ${error.message}`);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    // Check-run annotations remain readable through the GitHub API even when
+    // the runner's redirected log-storage host cannot be reached by a reviewer.
+    const detail = `${activeCheck}: ${error.message}`.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+    console.error(`::error title=Web Switcher extension browser acceptance::${detail}`);
+  }
   checks.push({id: activeCheck, passed: false, error: error.message});
   process.exitCode = 1;
 } finally {
