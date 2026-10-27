@@ -2,6 +2,8 @@
 
 A built ZIP, a Git commit, a successful GitHub push, a green CI run, a published environment and a live deployment are distinct outcomes. Record each only when there is evidence for that exact action.
 
+For owner-operated browser installation and Store submission, follow [the detailed Chrome installation and publishing guide](CHROME_INSTALL_AND_STORE.md). PNG icons, a required small promotional tile and a local-only privacy page are supplied; the owner still captures real screenshots and completes Google's registration/review.
+
 ## Development checkpoint
 
 1. Run root routing/security tests, manifest checks, the web production build, Java API/fetcher tests and the current Chromium acceptance suite.

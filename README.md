@@ -58,6 +58,8 @@ Alternatively use `docker compose -f infra/compose/local.yml up --build` for the
 
 ## Try the extension
 
+**Start here:** [Install in your browser or publish to the Chrome Web Store](docs/CHROME_INSTALL_AND_STORE.md). Includes the no-build download path, a working manual test, supplied Store assets, privacy-page hosting, listing copy, permission justifications, reviewer instructions and updates. Manual mode needs no backend.
+
 `npm run package` creates `dist/web-switcher/` and `dist/web-switcher-0.2.0.zip`. In a browser profile that permits development extensions, enable Developer mode in Chrome/Edge's extensions page and load the unpacked directory. The ZIP must be extracted before loading.
 
 Add an old origin and an independently checked current HTTPS origin. Access is requested for that source only. Homepage routing is the default; preserve a path only where you know the structures are compatible. Queries and fragments are removed; sensitive links require a fresh confirmation. Cookies, sessions and credentials never migrate between domains.
