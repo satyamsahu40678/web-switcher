@@ -89,6 +89,7 @@ The HTTP demo test mutates **synthetic demo data**, including a revocation; use 
 - [Recovery checkpoint](docs/RECOVERY_CHECKPOINT.md)
 - [Fetcher contract and limits](fetcher/README.md)
 - [Owner signing tools](packages/security/README.md)
+- [Publisher key provisioning](docs/SIGNING_KEYS.md)
 
 Public deployment, production identities/keys, private egress enforcement, independent database privileges, native Chrome/Edge acceptance, browser stores, owner pilots and research effectiveness measurements remain explicit release gates. GitHub workflow definitions do not establish that CI has run.
 
