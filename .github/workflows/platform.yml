@@ -87,11 +87,13 @@ jobs:
       - name: Extension and web UI browser acceptance
         run: |
           export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
-          npm run test:browser
-          node tests/continuity-probe-browser.mjs
-          node tests/continuity-ui.mjs
-          node tests/continuity-browser.mjs
-          npm --prefix apps/web run test:browser
+          failed=0
+          npm run test:browser || failed=1
+          for suite in tests/continuity-probe-browser.mjs tests/continuity-ui.mjs tests/continuity-browser.mjs; do
+            node "$suite" || failed=1
+          done
+          npm --prefix apps/web run test:browser || failed=1
+          exit "$failed"
       - name: Preserve current browser results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

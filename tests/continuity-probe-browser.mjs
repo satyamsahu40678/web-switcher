@@ -4,6 +4,7 @@ import {createServer} from 'node:http';
 import {createServer as createTcpServer} from 'node:net';
 import {mkdtemp, mkdir, cp, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
+import {setTimeout as delay} from 'node:timers/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
 
@@ -37,7 +38,17 @@ try {
   context = await chromium.launchPersistentContext(path.join(directory, 'profile'), {headless: true, executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: [`--disable-extensions-except=${directory}`, `--load-extension=${directory}`, '--no-sandbox', '--no-proxy-server', '--host-resolver-rules=MAP *.test 127.0.0.1']});
   context.setDefaultTimeout(10000);
   let [worker] = context.serviceWorkers(); if (!worker) worker = await context.waitForEvent('serviceworker');
-  await worker.evaluate(async () => { for (let i = 0; i < 50 && !globalThis.runProbe; i++) await new Promise(resolve => setTimeout(resolve, 20)); if (!globalThis.runProbe) throw new Error('Native probe worker did not initialize'); });
+  // Playwright can expose the worker before its extension module initializes.
+  // Poll from Node; an early worker execution context need not expose timers.
+  let initialized = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await worker.evaluate(() => typeof globalThis.runProbe === 'function')) { initialized = true; break; }
+    await delay(100);
+  }
+  if (!initialized) {
+    const availability = await worker.evaluate(() => ({probe: typeof globalThis.runProbe, chrome: typeof chrome, timer: typeof setTimeout}));
+    throw new Error('Native probe worker did not initialize: ' + JSON.stringify(availability));
+  }
   const probe = url => worker.evaluate(url => globalThis.runProbe(url), url);
   active = 'P01_manual_location';
   const first = await probe(origin(names[0]) + '/');
