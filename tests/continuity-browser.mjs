@@ -92,7 +92,10 @@ async function navigate(page, url) {
   catch (error) { if (!error.message.includes('ERR_ABORTED')) throw error; }
 }
 async function check(id, run) { activeCheck = id; await run(); checks.push({id, passed: true}); console.log(`PASS ${id}`); }
-function count(hostname, destination) { return hits.filter(hit => hit.hostname === hostname && (destination === undefined || hit.destination === destination)).length; }
+// Native extension fetches may omit Sec-Fetch-Dest entirely. Navigation and
+// image requests retain their distinct values; keep the raw fixture record.
+function isProbeRequest(hit) { return hit.destination === '' || hit.destination === 'empty'; }
+function count(hostname, destination) { return hits.filter(hit => hit.hostname === hostname && (destination === undefined || (destination === 'probe' ? isProbeRequest(hit) : hit.destination === destination))).length; }
 async function discovery(source = sourceOrigin) { return message('CONTINUITY_DISCOVER', {sourceOrigin: source}); }
 async function follow(source, enabled = true) { return message('CONTINUITY_FOLLOW', {sourceOrigin: source, enabled}); }
 const gateUrl = () => `chrome-extension://${extensionId}/continuity-gate.html`;
@@ -135,7 +138,7 @@ try {
     await page.close();
   });
   await check('C04_probe_requests_omit_credentials_referrer_and_private_URL_parts', async () => {
-    const probes = hits.filter(hit => hit.destination === 'empty');
+    const probes = hits.filter(isProbeRequest);
     assert.ok(probes.length >= 3, 'The real extension must issue fixture probes.');
     for (const hit of probes) { assert.equal(hit.method, 'GET'); assert.equal(hit.cookie, null); assert.equal(hit.referrer, null); assert.equal(hit.path, '/'); }
     assert.ok(!JSON.stringify(hits).includes('private-url-secret'));
@@ -202,10 +205,10 @@ try {
     assert.equal(result.status, 'unavailable'); assert.equal(result.reason, 'HTTP_403'); assert.equal(result.terminalOrigin, undefined); assert.equal(count('deny-target.test'), before);
   });
   await check('C13_ungranted_origin_requires_permission_before_network', async () => {
-    const before = hits.filter(hit => hit.destination === 'empty').length;
+    const before = hits.filter(isProbeRequest).length;
     const result = await discovery('https://ungranted-continuity-site.com/private?token=local-only');
     assert.equal(result.status, 'permission_required'); assert.deepEqual(result.requiredOrigins, ['https://ungranted-continuity-site.com']); assert.equal(result.terminalOrigin, undefined);
-    assert.equal(hits.filter(hit => hit.destination === 'empty').length, before);
+    assert.equal(hits.filter(isProbeRequest).length, before);
   });
   await check('C14_sensitive_original_link_needs_a_fresh_confirmation', async () => {
     const before = count('next.test', 'document'); const page = await context.newPage();
@@ -226,7 +229,7 @@ try {
   });
   await check('C16_stale_and_forged_gate_envelopes_do_not_trigger_discovery', async () => {
     const state = await storage('continuityState'), config = await storage('config');
-    const relevantHits = () => hits.filter(hit => ['old.test', 'bridge.test', 'current.test', 'next.test', 'evil.test'].includes(hit.hostname) && (hit.destination === 'empty' || hit.hostname === 'evil.test')).length;
+    const relevantHits = () => hits.filter(hit => ['old.test', 'bridge.test', 'current.test', 'next.test', 'evil.test'].includes(hit.hostname) && (isProbeRequest(hit) || hit.hostname === 'evil.test')).length;
     const site = state.sites.find(site => site.sourceOrigin === sourceOrigin); const before = relevantHits();
     const stale = await context.newPage(); await stale.goto(`${gateUrl()}#g=stale&m=${site.id}&source=${sourceOrigin}/`);
     await stale.waitForFunction(() => document.body.dataset.reason === 'changed'); assert.equal(stale.url(), gateUrl()); await stale.close();
@@ -238,8 +241,8 @@ try {
     const state = await storage('continuityState'), old = Date.now() - 8 * 24 * 60 * 60 * 1000;
     for (const edge of state.edges) Object.assign(edge, {firstSeen: old, lastSeen: old, expiresAt: old + 7 * 24 * 60 * 60 * 1000});
     await worker.evaluate(state => chrome.storage.local.set({continuityState: state}), state);
-    const before = count('next.test', 'empty'); const result = await discovery();
-    assert.equal(result.status, 'unavailable'); assert.equal(result.terminalOrigin, undefined); assert.equal(count('next.test', 'empty'), before);
+    const before = count('next.test', 'probe'); const result = await discovery();
+    assert.equal(result.status, 'unavailable'); assert.equal(result.terminalOrigin, undefined); assert.equal(count('next.test', 'probe'), before);
   });
   await check('C18_forget_and_clear_remove_following_and_local_history', async () => {
     await message('CONTINUITY_FORGET', {sourceOrigin});
