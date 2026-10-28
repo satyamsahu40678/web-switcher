@@ -11,7 +11,7 @@ import {chromium} from 'playwright';
 const reportPath = 'test-results/continuity-probe-browser.json';
 await mkdir('test-results', {recursive: true}); await rm(reportPath, {force: true});
 const directory = await mkdtemp(path.join(tmpdir(), 'web-switcher-native-probe-'));
-const hits = [], checks = []; let context, active = 'P00_worker';
+const hits = [], checks = [], observations = []; let context, worker, active = 'P00_worker';
 const names = ['old.continuity.test', 'next.continuity.test', 'current.continuity.test', 'unsafe.continuity.test'];
 const server = createServer((request, response) => {
   const host = request.headers.host.split(':')[0]; hits.push({host, path: request.url, method: request.method});
@@ -34,10 +34,21 @@ try {
   for (const file of ['continuity-probe.js', 'core.js']) await cp(path.join('extension', file), path.join(directory, file));
   await cp('extension/security', path.join(directory, 'security'), {recursive: true});
   await writeFile(path.join(directory, 'manifest.json'), JSON.stringify({manifest_version: 3, name: 'Continuity transport fixture', version: '0.0.1', permissions: ['webRequest'], host_permissions: names.map(name => `http://${name}/*`), background: {service_worker: 'background.js', type: 'module'}}));
-  await writeFile(path.join(directory, 'background.js'), `import {createContinuityProbe} from './continuity-probe.js'; globalThis.runProbe=createContinuityProbe(chrome,{allowTestOrigins:true}); chrome.runtime.onInstalled.addListener(()=>{});`);
+  await writeFile(path.join(directory, 'background.js'), `import {createContinuityProbe} from './continuity-probe.js';
+globalThis.probeEvents=[];
+const capture=kind=>details=>{
+  globalThis.probeEvents.push({kind,url:details.url,type:details.type,method:details.method,initiator:details.initiator,tabId:details.tabId,requestId:details.requestId,statusCode:details.statusCode,error:details.error});
+  if(globalThis.probeEvents.length>40)globalThis.probeEvents.shift();
+};
+const filter={urls:['http://*.test/*']};
+chrome.webRequest.onBeforeRequest.addListener(capture('request'),filter);
+chrome.webRequest.onHeadersReceived.addListener(capture('headers'),filter);
+chrome.webRequest.onErrorOccurred.addListener(capture('error'),filter);
+globalThis.runProbe=createContinuityProbe(chrome,{allowTestOrigins:true});
+chrome.runtime.onInstalled.addListener(()=>{});`);
   context = await chromium.launchPersistentContext(path.join(directory, 'profile'), {headless: true, executablePath: process.env.CHROMIUM_PATH || chromium.executablePath(), args: [`--disable-extensions-except=${directory}`, `--load-extension=${directory}`, '--no-sandbox', '--no-proxy-server', '--host-resolver-rules=MAP *.test 127.0.0.1']});
   context.setDefaultTimeout(10000);
-  let [worker] = context.serviceWorkers(); if (!worker) worker = await context.waitForEvent('serviceworker');
+  [worker] = context.serviceWorkers(); if (!worker) worker = await context.waitForEvent('serviceworker');
   // Playwright can expose the worker before its extension module initializes.
   // Poll from Node; an early worker execution context need not expose timers.
   let initialized = false;
@@ -49,7 +60,10 @@ try {
     const availability = await worker.evaluate(() => ({probe: typeof globalThis.runProbe, chrome: typeof chrome, timer: typeof setTimeout}));
     throw new Error('Native probe worker did not initialize: ' + JSON.stringify(availability));
   }
-  const probe = url => worker.evaluate(url => globalThis.runProbe(url), url);
+  const probe = async url => {
+    const result = await worker.evaluate(url => globalThis.runProbe(url), url);
+    observations.push({url, result}); return result;
+  };
   active = 'P01_manual_location';
   const first = await probe(origin(names[0]) + '/');
   assert.equal(first.status, 'redirect'); assert.equal(first.httpStatus, 302); assert.equal(first.evidence, 'http_redirect'); assert.equal(first.successorUrl, origin(names[1]) + '/');
@@ -83,8 +97,11 @@ try {
   const result = {executedAt: new Date().toISOString(), browser: context.browser()?.version(), passedChecks: checks.length, checks, limitations: ['Generated internal loopback HTTP fixtures only; no deployed public egress or ownership claim.', 'Required fixture host grants do not test native optional-permission dialogs.']};
   await writeFile(reportPath, JSON.stringify(result, null, 2) + '\n'); console.log(JSON.stringify(result, null, 2));
 } catch (error) {
-  const detail = `${active}: ${error.message}`;
-  await writeFile(reportPath, JSON.stringify({executedAt: new Date().toISOString(), passedChecks: checks.length, checks, error: detail}, null, 2) + '\n');
+  let events;
+  try { events = await worker?.evaluate(() => globalThis.probeEvents); } catch { /* Preserve the original failure. */ }
+  const diagnostics = {observations: observations.slice(-8), events, hits: hits.slice(-10)};
+  const detail = `${active}: ${error.message}; fixture diagnostics: ${JSON.stringify(diagnostics)}`;
+  await writeFile(reportPath, JSON.stringify({executedAt: new Date().toISOString(), passedChecks: checks.length, checks, error: detail, diagnostics}, null, 2) + '\n');
   if (process.env.GITHUB_ACTIONS === 'true') console.error('::error title=Native continuity transport::' + detail.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A'));
   throw error;
 } finally {

@@ -251,6 +251,12 @@ try {
   });
   assert.equal(checks.length, 18, 'Every current continuity acceptance check must execute.');
 } catch (error) {
+  try {
+    if (settings && !settings.isClosed()) {
+      const result = await discovery();
+      error.message += `; source discovery: ${JSON.stringify(result)}; fixture hits: ${JSON.stringify(hits.slice(-10))}`;
+    }
+  } catch { /* Diagnostic probing must not hide the first acceptance failure. */ }
   const notices = [];
   for (const page of context?.pages() || []) {
     try {
