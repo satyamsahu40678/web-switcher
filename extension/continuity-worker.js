@@ -18,6 +18,18 @@ export function createContinuityController({chromeApi, allowTestOrigins = false,
   const probe = probeOverride || createContinuityProbe(chromeApi, options);
   const normalized = value => normalizeSource(value, options);
   const allowed = origin => chromeApi.permissions.contains({origins: [permissionFor(origin)]});
+  async function reservedResult(result) {
+    const origins = new Set([result.sourceOrigin, result.terminalOrigin, ...(result.chain || []).flatMap(edge => [edge.fromOrigin, edge.toOrigin]), ...(result.attempts || []).map(attempt => attempt.origin)].filter(Boolean));
+    for (const origin of origins) if (await isReserved(origin)) return true;
+    return false;
+  }
+  async function guardedProbe(url, probeOptions) {
+    const origin = new URL(url).origin;
+    const blocked = () => ({url, origin, status: 'blocked', httpStatus: 0, reason: 'SIGNED_REGISTRY_PRECEDENCE'});
+    if (await isReserved(origin)) return blocked();
+    const result = await probe(url, probeOptions);
+    return await isReserved(origin) ? blocked() : result;
+  }
   async function read() {
     const {continuityState} = await chromeApi.storage.local.get('continuityState');
     if (!continuityState) return emptyContinuityState();
@@ -40,7 +52,8 @@ export function createContinuityController({chromeApi, allowTestOrigins = false,
     const sourceOrigin = normalized(value);
     if (await isReserved(sourceOrigin)) return {status: 'unknown', sourceOrigin, chain: [], reason: 'SIGNED_REGISTRY_PRECEDENCE'};
     const before = await read();
-    const resolved = await discoverContinuity(sourceOrigin, {state: before, probe, hasPermission: allowed, allowTestOrigins});
+    const resolved = await discoverContinuity(sourceOrigin, {state: before, probe: guardedProbe, hasPermission: allowed, allowTestOrigins});
+    if (await reservedResult(resolved.result)) return {status: 'unknown', sourceOrigin, chain: [], reason: 'SIGNED_REGISTRY_PRECEDENCE'};
     // A discovery result must not restore a site or its history after another
     // context paused, forgot, or cleared it while the network was in flight.
     // Discard stale learning rather than overwrite newer user decisions.
@@ -88,7 +101,7 @@ export function createContinuityController({chromeApi, allowTestOrigins = false,
   async function open(message) {
     const expected = normalized(message.expectedOrigin), result = await discover(message.sourceOrigin);
     if (result.status !== 'found' || result.terminalOrigin !== expected) throw new Error('The current address changed or could not be rechecked. Find it again before opening.');
-    if (!(await allowed(result.sourceOrigin)) || await isReserved(result.sourceOrigin)) throw new Error('Source permission or registry authority changed. Check this site again.');
+    if (!(await allowed(result.sourceOrigin)) || await reservedResult(result)) throw new Error('Source permission or registry authority changed. Check this site again.');
     await chromeApi.tabs.create({url: expected + '/'});
     return {ok: true, terminalOrigin: expected};
   }
@@ -127,7 +140,7 @@ export function createContinuityController({chromeApi, allowTestOrigins = false,
       if (latest.generation !== envelope.generation) return {status: 'blocked', reason: 'changed'};
       if (latest.paused || !current?.enabled || current.sourceOrigin !== site.sourceOrigin) return {status: 'blocked', reason: 'paused'};
       if (current.createdAt > Date.now()) return {status: 'blocked', reason: 'expired'};
-      if (latest.mappings.some(mapping => mapping.sourceOrigin === site.sourceOrigin) || await isReserved(site.sourceOrigin)) return {status: 'blocked', reason: 'override'};
+      if (latest.mappings.some(mapping => mapping.sourceOrigin === site.sourceOrigin) || await reservedResult(result)) return {status: 'blocked', reason: 'override'};
       if (!(await allowed(site.sourceOrigin))) return {status: 'blocked', reason: 'permission'};
       return null;
     }

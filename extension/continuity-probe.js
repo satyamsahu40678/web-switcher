@@ -142,6 +142,7 @@ export function createContinuityProbe(chromeApi, {allowTestOrigins = false, fetc
     const item = match(details); if (!item || details.statusCode < 200) return;
     item.statusCode = details.statusCode;
     item.headers = (details.responseHeaders || []).filter(header => ['location', 'refresh', 'content-type'].includes(header.name?.toLowerCase()));
+    item.headersReceived();
   };
   const failed = details => { const item = match(details); if (item) { item.networkError = details.error; item.errorReceived(); } };
   const ready = Boolean(chromeApi.webRequest?.onHeadersReceived && chromeApi.webRequest?.onErrorOccurred);
@@ -159,6 +160,7 @@ export function createContinuityProbe(chromeApi, {allowTestOrigins = false, fetc
     if (!ready || !await chromeApi.permissions.contains({origins: [origin + '/*']})) return {...base, status: 'unavailable', httpStatus: 0, reason: 'PERMISSION_REQUIRED'};
     if (pending.has(url) || pending.size >= 4) return {...base, status: 'unavailable', httpStatus: 0, reason: 'PROBE_BUSY'};
     const item = {headers: []}; item.errorEvent = new Promise(resolve => { item.errorReceived = resolve; });
+    item.headersEvent = new Promise(resolve => { item.headersReceived = resolve; });
     pending.set(url, item);
     const controller = new AbortController(); let timer, timedOut = false, reader, response;
     const abort = () => controller.abort(signal?.reason);
@@ -169,8 +171,12 @@ export function createContinuityProbe(chromeApi, {allowTestOrigins = false, fetc
     try {
       if (controller.signal.aborted) return {...base, status: 'unavailable', httpStatus: 0, reason: 'ABORTED'};
       response = await Promise.race([fetchImpl(url, {method: 'GET', redirect: 'manual', credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', signal: controller.signal}), deadline, aborted]);
-      const httpStatus = item.statusCode || response.status;
-      if (response.redirected || (response.url && response.url !== url)) return {...base, status: 'blocked', httpStatus, reason: 'UNEXPECTED_TRANSPORT_REDIRECT'};
+      if (response.redirected || (response.url && response.url !== url)) return {...base, status: 'blocked', httpStatus: item.statusCode || response.status, reason: 'UNEXPECTED_TRANSPORT_REDIRECT'};
+      // Chromium may settle fetch(manual) before dispatching its matching
+      // webRequest callback. Wait for that correlated observation for both
+      // opaque redirects and late Refresh headers, within the same deadline.
+      await Promise.race([item.headersEvent, deadline, aborted]);
+      const httpStatus = item.statusCode;
       const values = name => item.headers.filter(header => header.name.toLowerCase() === name).map(header => header.value || '');
       if ([301, 302, 303, 307, 308].includes(httpStatus)) {
         const locations = [...new Set(values('location').map(value => value.trim()))];
@@ -217,7 +223,9 @@ export function createContinuityProbe(chromeApi, {allowTestOrigins = false, fetc
       return {...base, status: 'reachable', httpStatus};
     } catch (error) {
       if (!item.networkError && !timedOut && !signal?.aborted) await Promise.race([item.errorEvent, new Promise(resolve => setTimeout(resolve, 75))]);
-      const reason = timedOut ? 'TIMEOUT' : signal?.aborted ? 'ABORTED' : error.message === 'RESPONSE_TOO_LARGE' ? 'RESPONSE_TOO_LARGE' : networkReason(item.networkError);
+      // Missing instrumentation is not evidence of a dead source and must not
+      // qualify for remembered-successor recovery as an ordinary timeout.
+      const reason = signal?.aborted ? 'ABORTED' : response && !item.statusCode ? 'RESPONSE_HEADERS_UNAVAILABLE' : timedOut ? 'TIMEOUT' : error.message === 'RESPONSE_TOO_LARGE' ? 'RESPONSE_TOO_LARGE' : networkReason(item.networkError);
       return {...base, status: 'unavailable', httpStatus: item.statusCode || 0, reason};
     } finally {
       clearTimeout(timer); controller.abort(); signal?.removeEventListener('abort', abort); pending.delete(url);

@@ -190,7 +190,10 @@ function renderContinuityResult(result) {
     loop: ['The chain returns to an earlier address', 'A cycle is not a current destination. No destination will be opened.'],
     unavailable: ['The website could not be checked', 'A failed request alone does not establish that the website moved. Previously remembered successors may help on a later check.']
   };
-  const [heading, explanation] = messages[result.status] || messages.unknown;
+  const signedBarrier = result.reason === 'SIGNED_REGISTRY_PRECEDENCE';
+  const [heading, explanation] = signedBarrier
+    ? ['A signed registry decision takes precedence', 'A source in this chain belongs to signed registry history. Review that decision in settings; unverified discovery cannot replace withdrawn or expired signed authority.']
+    : messages[result.status] || messages.unknown;
   title.textContent = heading;
   detail.textContent = explanation;
   chain.replaceChildren();
@@ -211,7 +214,7 @@ function renderContinuityResult(result) {
   proceed.hidden = result.status !== 'permission_required' || !Array.isArray(result.requiredOrigins) || !result.requiredOrigins.length;
   if (!proceed.hidden) proceed.textContent = `Allow next check: ${result.requiredOrigins.map(continuityOrigin).join(', ')}`;
   open.hidden = result.status !== 'found' || !result.terminalOrigin;
-  continuityFollow.hidden = !result.sourceOrigin || !['found', 'unknown', 'unavailable'].includes(result.status);
+  continuityFollow.hidden = signedBarrier || !result.sourceOrigin || !['found', 'unknown', 'unavailable'].includes(result.status);
   followLabel.hidden = continuityFollow.hidden;
   continuityFollow.disabled = true;
   continuityMessage(result.status === 'found' ? 'Check complete. No destination was entered manually.' : heading);

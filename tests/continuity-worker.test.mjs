@@ -87,6 +87,68 @@ test('reserved signed sources are never probed or opened through weaker continui
   assert.deepEqual(f.opened, []); assert.deepEqual(f.records, []);
 });
 
+test('signed reservations stop live and remembered intermediate successors before their network request', async t => {
+  for (const remembered of [false, true]) await t.test(remembered ? 'remembered dead predecessor' : 'live predecessor', async () => {
+    const state = {...emptyContinuityState(), sites: [site()], edges: remembered ? [edge(A, B), edge(B, C)] : []};
+    const f = fixture({state, reserved: origin => origin === B, probe: async url => {
+      if (new URL(url).origin === A) return remembered
+        ? {url, origin: A, status: 'unavailable', httpStatus: 0, reason: 'NETWORK_DNS_FAILURE'}
+        : redirect(url);
+      assert.fail('A signed intermediate origin must not be probed through continuity.');
+    }});
+    const result = await f.controller.discover(A);
+    assert.equal(result.status, 'unknown'); assert.equal(result.reason, 'SIGNED_REGISTRY_PRECEDENCE');
+    assert.deepEqual(f.observations, [A + '/']);
+    assert.deepEqual(await f.controller.read(), state, 'No partial evidence is learned across the signed barrier.');
+  });
+});
+
+test('an intermediate successor reserved while being probed cannot contribute another hop', async () => {
+  let reserved = false;
+  const f = fixture({reserved: origin => origin === B && reserved, probe: async url => {
+    if (new URL(url).origin === A) return redirect(url);
+    assert.equal(new URL(url).origin, B); reserved = true; return redirect(url, C);
+  }});
+  const result = await f.controller.discover(A);
+  assert.equal(result.status, 'unknown'); assert.equal(result.reason, 'SIGNED_REGISTRY_PRECEDENCE');
+  assert.deepEqual(f.observations, [A + '/', B + '/']);
+  assert.deepEqual((await f.controller.read()).edges, []);
+});
+
+test('late reservation of an earlier hop blocks discovery, explicit open and the navigation gate', async t => {
+  for (const action of ['discover', 'open', 'gate']) await t.test(action, async () => {
+    let reserved = false;
+    const f = fixture({reserved: origin => origin === B && reserved, probe: async url => {
+      const origin = new URL(url).origin;
+      if (origin === A) return redirect(url);
+      if (origin === B) return redirect(url, C);
+      assert.equal(origin, C); reserved = true; return reachable(url);
+    }});
+    if (action === 'open') await assert.rejects(f.controller.open({sourceOrigin: A, expectedOrigin: C}), /changed|authority/);
+    else {
+      const result = action === 'discover' ? await f.controller.discover(A)
+        : await f.controller.resolveGate({envelope: f.envelope()}, f.sender, f.context);
+      assert.notEqual(result.status, 'found'); assert.notEqual(result.status, 'ready');
+      assert.equal(result.reason, 'SIGNED_REGISTRY_PRECEDENCE');
+    }
+    assert.deepEqual(f.observations, [A + '/', B + '/', C + '/']);
+    assert.deepEqual(f.opened, []); assert.deepEqual(f.updates, []); assert.deepEqual(f.records, []);
+    assert.deepEqual((await f.controller.read()).edges, []);
+  });
+});
+
+test('a signed reservation on an earlier hop after switch recording still withholds the navigation target', async () => {
+  let reserved = false;
+  const f = fixture({reserved: origin => origin === B && reserved, probe: async url => {
+    const origin = new URL(url).origin;
+    return origin === A ? redirect(url) : origin === B ? redirect(url, C) : reachable(url);
+  }});
+  f.context.recordSwitch = async result => {reserved = true; return result;};
+  const result = await f.controller.resolveGate({envelope: f.envelope()}, f.sender, f.context);
+  assert.deepEqual(result, {status: 'blocked', reason: 'override'});
+  assert.deepEqual(f.opened, []); assert.deepEqual(f.updates, []);
+});
+
 test('gate rechecks grants, pause, generation and registry changes after the network returns', async t => {
   for (const [name, mutate, reason] of [
     ['permission', f => f.grants.delete(A), 'permission'],

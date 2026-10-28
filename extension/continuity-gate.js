@@ -8,8 +8,10 @@ document.querySelector('#continuity-settings').addEventListener('click', () => c
 const explanations = {
   paused: 'Following is paused or this site is no longer followed.',
   changed: 'Your settings or the destination changed. Reopen the original link to check again.',
+  expired: 'This followed-site record has an invalid future time. Review it in settings.',
   permission: 'Access to this source was revoked. Review its permission in settings.',
   override: 'A manual or signed registry decision takes precedence for this source. Review it in settings.',
+  SIGNED_REGISTRY_PRECEDENCE: 'A source in this chain belongs to signed registry history. Unverified discovery cannot replace that authority; review it in settings.',
   manual: 'This link may contain sensitive information. Only the discovered homepage will be opened after your confirmation.',
   loop: 'A recent switch in this tab was stopped to prevent a loop.',
   conflict: 'The observed successors disagree. A destination cannot be chosen automatically.',

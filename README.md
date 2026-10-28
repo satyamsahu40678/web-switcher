@@ -18,7 +18,7 @@ Start with [automatic continuity: how it works and how to use it](docs/AUTOMATIC
 
 This extension flow needs **no account, Java backend, Docker deployment or registry server**. It contacts the selected website/successors from your browser without cookies or a referrer. A live unmoved source can continue on its original URL; cross-domain continuity opens the discovered homepage and does not forward the original query, fragment or private path. Sensitive original links require confirmation.
 
-Manual old→new mappings remain available as secondary explicit overrides. Signed reviewed registry decisions remain a separate, stronger provenance class. Existing manual/signed decisions take precedence for the same exact source. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion, so weaker discovery cannot silently replace that authority.
+Manual old→new mappings remain available as secondary explicit overrides. Signed reviewed registry decisions remain a separate, stronger provenance class. Existing manual/signed decisions take precedence for the same exact source. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion, including when reached through another source’s chain, so weaker discovery cannot silently replace that authority.
 
 ## Implemented components
 

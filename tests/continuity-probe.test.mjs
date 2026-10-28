@@ -42,13 +42,52 @@ test('opaque manual redirects use captured headers without following the next ho
   probe.dispose(); assert.equal(f.listeners.headers.length, 0);
 });
 
-test('unrelated browsing/header events cannot supply an extension probe successor', async () => {
+test('manual redirect fetch waits for asynchronously delivered correlated headers', async () => {
+  const f = fixture(); let requests = 0;
+  const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => {
+    requests++;
+    setTimeout(() => f.emit('headers', {statusCode: 302, responseHeaders: [{name: 'Location', value: 'https://next.org/'}]}), 10);
+    return opaque();
+  }});
+  const result = await probe(source);
+  assert.equal(result.status, 'redirect'); assert.equal(result.httpStatus, 302); assert.equal(result.successorUrl, 'https://next.org/'); assert.equal(requests, 1);
+  probe.dispose();
+});
+
+test('successful fetch also waits for a late Refresh observation instead of claiming a terminal', async () => {
   const f = fixture();
+  const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => {
+    setTimeout(() => f.emit('headers', {statusCode: 200, responseHeaders: [{name: 'Refresh', value: '0;url=https://next.org/'}]}), 10);
+    return html('<h1>A move is declared in its response header</h1>');
+  }});
+  const result = await probe(source);
+  assert.equal(result.status, 'redirect'); assert.equal(result.evidence, 'http_refresh'); assert.equal(result.successorUrl, 'https://next.org/');
+  probe.dispose();
+});
+
+test('missing header instrumentation fails closed without a recoverable network-timeout reason', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const f = fixture(); let receivedFetch, settleFetch;
+  const started = new Promise(resolve => { receivedFetch = resolve; });
+  const probe = createContinuityProbe(f.chrome, {fetchImpl: () => {
+    receivedFetch(); return new Promise(resolve => { settleFetch = resolve; });
+  }});
+  const work = probe(source); await started; settleFetch(opaque());
+  await new Promise(setImmediate);
+  t.mock.timers.tick(8001);
+  const result = await work;
+  assert.equal(result.status, 'unavailable'); assert.equal(result.reason, 'RESPONSE_HEADERS_UNAVAILABLE'); assert.equal(result.successorUrl, undefined);
+  probe.dispose();
+});
+
+test('unrelated browsing/header events cannot supply an extension probe successor', async () => {
+  const f = fixture(), controller = new AbortController();
   const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => {
     for (const change of [{initiator: 'https://attacker.org'}, {tabId: 4}, {url: 'https://other.org/'}, {method: 'POST'}, {type: 'main_frame'}, {initiator: undefined}]) f.emit('headers', {statusCode: 302, responseHeaders: [{name: 'Location', value: 'https://attacker.org/'}], ...change});
     return opaque();
   }});
-  const result = await probe(source); assert.equal(result.status, 'unavailable'); assert.equal(result.successorUrl, undefined); probe.dispose();
+  const work = probe(source, {signal: controller.signal}); setTimeout(() => controller.abort(), 10);
+  const result = await work; assert.equal(result.status, 'unavailable'); assert.equal(result.reason, 'ABORTED'); assert.equal(result.successorUrl, undefined); probe.dispose();
 });
 
 test('unsafe and conflicting server successors are refused instead of contacted', async () => {
@@ -63,13 +102,13 @@ test('header/meta conflicts abstain and generic canonical links do not move a si
   const f = fixture(); let body = '<meta http-equiv=refresh content="0;url=https://two.org/">';
   const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => { f.emit('headers', {statusCode: 200, responseHeaders: [{name: 'Refresh', value: '0;url=https://one.org/'}]}); return html(body); }});
   assert.equal((await probe(source)).status, 'ambiguous'); probe.dispose();
-  const f2 = fixture(); const probe2 = createContinuityProbe(f2.chrome, {fetchImpl: async () => html('<link rel=canonical href="https://canonical.org/"><a href="https://generic.org/">New domain</a>')});
+  const f2 = fixture(); const probe2 = createContinuityProbe(f2.chrome, {fetchImpl: async () => { f2.emit('headers', {statusCode: 200}); return html('<link rel=canonical href="https://canonical.org/"><a href="https://generic.org/">New domain</a>'); }});
   assert.equal((await probe2(source)).status, 'reachable'); probe2.dispose();
 });
 
 test('advertised well-known JSON is a closed unverified convention with duplicate-key rejection', async () => {
   const f = fixture(); let body = '{"schemaVersion":1,"successorOrigin":"https://next.org"}';
-  const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => new Response(body, {headers: {'Content-Type': 'application/json'}})});
+  const probe = createContinuityProbe(f.chrome, {fetchImpl: async url => { f.emit('headers', {url, statusCode: 200}); return new Response(body, {headers: {'Content-Type': 'application/json'}}); }});
   const result = await probe(source + '.well-known/web-switcher.json'); assert.equal(result.status, 'redirect'); assert.equal(result.evidence, 'well_known');
   body = '{"schemaVersion":1,"successorOrigin":"https://one.org","successorOrigin":"https://two.org"}';
   assert.equal((await probe(source + '.well-known/web-switcher.json')).reason, 'INVALID_CONTINUITY_MANIFEST'); probe.dispose();
@@ -79,6 +118,7 @@ test('an advertised same-origin manifest consumes a separate explicit probe call
   const f = fixture(), requests = [];
   const probe = createContinuityProbe(f.chrome, {fetchImpl: async url => {
     requests.push(url);
+    f.emit('headers', {url, statusCode: 200});
     return url.endsWith('/.well-known/web-switcher.json') ? new Response('{"schemaVersion":1,"successorOrigin":"https://next.org"}', {headers: {'Content-Type': 'application/json'}}) : html('<link rel="web-switcher-successor" href="/.well-known/web-switcher.json">');
   }});
   const advertised = await probe(source);
@@ -97,7 +137,7 @@ test('network event causes distinguish dead connections from TLS and generic fet
 });
 
 test('response byte limits and an overall caller abort stop work without accepting a successor', async () => {
-  const f = fixture(); const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => html('a'.repeat(128 * 1024 + 1))});
+  const f = fixture(); const probe = createContinuityProbe(f.chrome, {fetchImpl: async () => { f.emit('headers', {statusCode: 200}); return html('a'.repeat(128 * 1024 + 1)); }});
   const oversized = await probe(source); assert.equal(oversized.reason, 'RESPONSE_TOO_LARGE'); probe.dispose();
   const f2 = fixture(), controller = new AbortController();
   const probe2 = createContinuityProbe(f2.chrome, {fetchImpl: async () => new Promise(() => {})});
