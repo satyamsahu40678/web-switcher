@@ -39,7 +39,14 @@ const hits = [], checks = [], modes = new Map([
 ]);
 const server = http.createServer((req, res) => {
   const hostname = new URL('http://' + req.headers.host).hostname;
-  hits.push({hostname, method: req.method, path: req.url, destination: req.headers['sec-fetch-dest'] || '', cookie: req.headers.cookie || null, referrer: req.headers.referer || null});
+  const destination = req.headers['sec-fetch-dest'] || '', accept = req.headers.accept || '';
+  // Chromium omits Fetch Metadata on these loopback HTTP hostnames. In this
+  // controlled fixture the extension fetch sends the default */* Accept, while
+  // navigations request text/html and favicons request images. Do not classify
+  // by credentials: those are the privacy property being asserted below.
+  const requestKind = destination ? (destination === 'empty' ? 'probe' : destination === 'document' ? 'document' : 'subresource')
+    : accept === '*/*' ? 'probe' : accept.startsWith('text/html') ? 'document' : 'subresource';
+  hits.push({hostname, method: req.method, path: req.url, destination, accept, requestKind, cookie: req.headers.cookie || null, referrer: req.headers.referer || null});
   const mode = modes.get(hostname) || {kind: 'page'};
   if (mode.kind === 'dead') { req.socket.destroy(); return; }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -92,10 +99,8 @@ async function navigate(page, url) {
   catch (error) { if (!error.message.includes('ERR_ABORTED')) throw error; }
 }
 async function check(id, run) { activeCheck = id; await run(); checks.push({id, passed: true}); console.log(`PASS ${id}`); }
-// Native extension fetches may omit Sec-Fetch-Dest entirely. Navigation and
-// image requests retain their distinct values; keep the raw fixture record.
-function isProbeRequest(hit) { return hit.destination === '' || hit.destination === 'empty'; }
-function count(hostname, destination) { return hits.filter(hit => hit.hostname === hostname && (destination === undefined || (destination === 'probe' ? isProbeRequest(hit) : hit.destination === destination))).length; }
+function isProbeRequest(hit) { return hit.requestKind === 'probe'; }
+function count(hostname, requestKind) { return hits.filter(hit => hit.hostname === hostname && (requestKind === undefined || hit.requestKind === requestKind)).length; }
 async function discovery(source = sourceOrigin) { return message('CONTINUITY_DISCOVER', {sourceOrigin: source}); }
 async function follow(source, enabled = true) { return message('CONTINUITY_FOLLOW', {sourceOrigin: source, enabled}); }
 const gateUrl = () => `chrome-extension://${extensionId}/continuity-gate.html`;
@@ -140,6 +145,7 @@ try {
   await check('C04_probe_requests_omit_credentials_referrer_and_private_URL_parts', async () => {
     const probes = hits.filter(isProbeRequest);
     assert.ok(probes.length >= 3, 'The real extension must issue fixture probes.');
+    assert.ok(hits.some(hit => hit.hostname === 'current.test' && hit.requestKind === 'document'), 'The fixture must also distinguish actual destination document navigations.');
     for (const hit of probes) { assert.equal(hit.method, 'GET'); assert.equal(hit.cookie, null); assert.equal(hit.referrer, null); assert.equal(hit.path, '/'); }
     assert.ok(!JSON.stringify(hits).includes('private-url-secret'));
     const state = await storage('continuityState');
