@@ -29,7 +29,8 @@ async function render() {
   pause.textContent = paused ? 'Resume switching' : 'Pause switching';
   pause.setAttribute('aria-pressed', String(paused));
   const enabled = config.mappings.filter(mapping => isCurrent(mapping, config, grantedOrigins)).length;
-  document.querySelector('#active-count').textContent = `${enabled} active / ${config.mappings.length} saved`;
+  const followed = snapshot.continuity?.sites || [];
+  document.querySelector('#active-count').textContent = `${followed.filter(site => site.enabled && !paused).length} followed / ${enabled} manual active`;
   shownMapping = config.mappings.find(mapping => mapping.sourceOrigin === currentOrigin) || config.mappings.find(mapping => mapping.destinationOrigin === currentOrigin);
   const detail = document.querySelector('#mapping-details');
   const open = document.querySelector('#open-current');
@@ -49,10 +50,13 @@ async function render() {
     document.querySelector('#mapping-freshness').textContent = `Confirmed ${new Date(mapping.createdAt).toLocaleString()}. Expires ${new Date(mapping.expiresAt).toLocaleString()}.`;
     open.disabled = expired;
   } else {
-    document.querySelector('#popup-title').textContent = currentOrigin ? 'No connection saved.' : 'Keep the thread.';
-    document.querySelector('#popup-message').textContent = currentOrigin ? 'No local replacement is configured for this origin. Add one only after checking where the website moved.' : 'Open an HTTP or HTTPS website to check its local mapping, or manage your connections.';
+    const site = followed.find(site => site.sourceOrigin === currentOrigin);
+    document.querySelector('#popup-title').textContent = site ? 'Following this website.' : 'Find the current address.';
+    document.querySelector('#popup-message').textContent = site
+      ? paused || !site.enabled ? 'Automatic following is paused. You can still inspect its continuity chain in settings.' : 'Visits to this old origin check its observed successor chain automatically. The destination is not entered manually.'
+      : currentOrigin ? 'Start with this website. Follow explicit move signals and remembered successors without entering its new domain.' : 'Open a public website to start from its old address, or enter an address in settings.';
   }
-  document.querySelector('#add-mapping').textContent = currentOrigin && !shownMapping ? 'Add a local connection →' : 'Manage connections →';
+  document.querySelector('#add-mapping').textContent = currentOrigin && !shownMapping ? 'Add a manual override →' : 'Manual mappings →';
   document.querySelector('#clear').hidden = !receipts.length;
   undoReceipt = Number.isInteger(currentTab?.id) ? receipts.find(receipt => receipt.destinationOrigin === currentOrigin && Date.now() - receipt.at < 120000) : undefined;
   document.querySelector('#undo').hidden = !undoReceipt;
@@ -62,6 +66,10 @@ function openSettings() {
   return chrome.runtime.openOptionsPage();
 }
 document.querySelector('#settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+document.querySelector('#find-current').addEventListener('click', () => {
+  const address = chrome.runtime.getURL('options.html') + (currentOrigin ? '?source=' + encodeURIComponent(currentOrigin) : '') + '#continuity';
+  chrome.tabs.create({url: address}).catch(error => announce(error.message, true));
+});
 document.querySelector('#add-mapping').addEventListener('click', () => openSettings().catch(error => announce(error.message, true)));
 document.querySelector('#pause-all').addEventListener('click', async event => {
   if (!snapshot) return;

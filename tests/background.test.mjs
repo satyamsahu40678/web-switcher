@@ -38,6 +38,7 @@ const tabs = new Map();
 const tabUpdates = [];
 const alarms = [];
 const chromeMock = {
+  webRequest: {onHeadersReceived: event(), onErrorOccurred: event()},
   runtime: { id: extensionId, getURL: extensionUrl, onMessage: event(), onInstalled: event(), onStartup: event() },
   storage: { local: storageArea(), session: storageArea() },
   permissions: { onAdded: event(), onRemoved: event(), async contains({ origins }) { return origins.every(origin => grants.has(origin)); } },
@@ -212,6 +213,44 @@ test('clear local data preserves signature rollback memory and removes tab bypas
   sessionRules = [{ id: 1000007 }]; chromeMock.storage.session.values = { bypasses: { 7: { ruleId: 1000007, expiresAt: now() + 1000 } } };
   const cleared = await send({ type: 'CLEAR_LOCAL_DATA' }); assert.equal(cleared.ok, true, cleared.error);
   assert.deepEqual(chromeMock.storage.local.values.catalogHighwater, highwater); assert.equal(chromeMock.storage.local.values.catalogRecord, undefined); assert.equal(chromeMock.storage.local.values.config.mappings.length, 0); assert.equal(dynamicRules.length, 0); assert.equal(sessionRules.length, 0);
+  assert.deepEqual(chromeMock.storage.local.values.catalogContinuityOrigins, ['https://retired-docs.com']);
+});
+
+test('revoked and removed signed aliases cannot fall back to weaker automatic continuity', async () => {
+  reset({schemaVersion: 1, generation: 'empty', paused: false, mappings: []});
+  trustTestKey();
+  const sourceOrigin = 'https://retired-docs.com';
+  assert.equal((await send({type: 'CONTINUITY_FOLLOW', sourceOrigin, enabled: true})).ok, true);
+  assert.equal(dynamicRules.length, 1);
+  assert.match(dynamicRules[0].action.redirect.regexSubstitution, /continuity-gate/);
+  assert.equal((await send({type: 'importCatalog', jws: signedCatalog(1)})).ok, true);
+  assert.equal(dynamicRules.length, 1);
+  assert.match(dynamicRules[0].action.redirect.regexSubstitution, /route.html/);
+  const revoked = signedCatalog(2, value => {
+    value.decisions = [];
+    value.revocations = [{familyId: 'docs', revokedAt: new Date(now() - 1000).toISOString(), reason: 'Conflicting ownership evidence'}];
+  });
+  assert.equal((await send({type: 'importCatalog', jws: revoked})).ok, true);
+  assert.equal(dynamicRules.length, 0, 'revocation must not reactivate a followed source');
+  const blocked = await send({type: 'CONTINUITY_DISCOVER', sourceOrigin});
+  assert.equal(blocked.ok, true); assert.equal(blocked.data.reason, 'SIGNED_REGISTRY_PRECEDENCE');
+  assert.equal((await send({type: 'importCatalog', jws: signedCatalog(3, value => { value.aliases = []; value.decisions = []; })})).ok, true);
+  assert.equal(dynamicRules.length, 0, 'removing an alias does not erase its trust barrier');
+  assert.equal((await send({type: 'CLEAR_LOCAL_DATA'})).ok, true);
+  assert.equal((await send({type: 'CONTINUITY_FOLLOW', sourceOrigin, enabled: true})).ok, true);
+  assert.equal(dynamicRules.length, 0, 'clearing private activity does not remove the public trust barrier');
+});
+
+test('automatic continuity messages reject web senders and subframe gates', async () => {
+  reset();
+  const before = clone(chromeMock.storage.local.values);
+  for (const type of ['CONTINUITY_DISCOVER', 'CONTINUITY_FOLLOW', 'CONTINUITY_FORGET', 'CONTINUITY_OPEN']) {
+    const response = await send({type, sourceOrigin: 'https://old-site.com', enabled: true}, {id: extensionId, url: 'https://hostile.com/options.html'});
+    assert.equal(response.ok, false);
+  }
+  const subframe = await send({type: 'CONTINUITY_RESOLVE', envelope: envelope()}, {id: extensionId, url: extensionUrl('continuity-gate.html'), tab: {id: 7}, frameId: 2});
+  assert.deepEqual(subframe.data, {status: 'blocked', reason: 'invalid'});
+  assert.deepEqual(chromeMock.storage.local.values, before);
 });
 
 

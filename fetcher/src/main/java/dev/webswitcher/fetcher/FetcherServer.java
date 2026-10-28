@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -21,7 +22,7 @@ public final class FetcherServer {
     static {
         // JDK HttpServer limits are process-wide and set before creating the first server.
         System.setProperty("sun.net.httpserver.maxReqTime", "5");
-        System.setProperty("sun.net.httpserver.maxRspTime", "20");
+        System.setProperty("sun.net.httpserver.maxRspTime", "40");
         System.setProperty("sun.net.httpserver.maxReqHeaders", "32");
         System.setProperty("sun.net.httpserver.maxReqHeaderSize", "16384");
         System.setProperty("sun.net.httpserver.maxIdleConnections", "8");
@@ -29,7 +30,8 @@ public final class FetcherServer {
     }
     private static final ObjectMapper JSON = new ObjectMapper(JsonFactory.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
-            .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(4).maxStringLength(2048).build()).build());
+            .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(4).maxStringLength(2048).build()).build())
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     public static void main(String[] args) throws Exception {
         String token = System.getenv("FETCHER_INTERNAL_TOKEN");
@@ -53,9 +55,10 @@ public final class FetcherServer {
             if (!exchange.getRequestURI().getPath().equals("/health/live") || !exchange.getRequestMethod().equals("GET")) { reply(exchange, 404, Map.of("code", "NOT_FOUND")); return; }
             reply(exchange, 200, Map.of("status", "UP", "publicEgress", PinnedHttpTransport.hasProxyConfiguration() ? "UNAVAILABLE" : "REQUIRES_FIREWALL_VALIDATION"));
         });
-        server.createContext("/probe", exchange -> {
+        var handler = (com.sun.net.httpserver.HttpHandler) exchange -> {
             try {
-                if (!exchange.getRequestURI().getPath().equals("/probe") || exchange.getRequestURI().getRawQuery() != null) { reply(exchange, 404, Map.of("code", "NOT_FOUND")); return; }
+                String path = exchange.getRequestURI().getPath();
+                if (!(path.equals("/probe") || path.equals("/resolve")) || exchange.getRequestURI().getRawQuery() != null) { reply(exchange, 404, Map.of("code", "NOT_FOUND")); return; }
                 if (!exchange.getRequestMethod().equals("POST")) { reply(exchange, 405, Map.of("code", "METHOD_NOT_ALLOWED")); return; }
                 String supplied = exchange.getRequestHeaders().getFirst("Authorization");
                 if (supplied == null || supplied.length() > 512 || !MessageDigest.isEqual(expected, supplied.getBytes(StandardCharsets.UTF_8))) {
@@ -71,7 +74,7 @@ public final class FetcherServer {
                 if (node == null || !node.isObject() || node.size() != 1 || !node.has("url") || !node.get("url").isTextual()) {
                     reply(exchange, 400, Map.of("code", "INVALID_REQUEST")); return;
                 }
-                try { reply(exchange, 200, fetcher.probe(node.get("url").textValue())); }
+                try { reply(exchange, 200, path.equals("/resolve") ? fetcher.resolve(node.get("url").textValue()) : fetcher.probe(node.get("url").textValue())); }
                 catch (SafeFetcher.ProbeFailure e) {
                     int status = e.code.contains("LIMIT") || e.code.equals("HOST_CONCURRENCY_LIMIT") ? 429
                             : e.code.equals("PINNED_EGRESS_UNAVAILABLE") || e.code.equals("NETWORK_UNAVAILABLE") || e.code.equals("DNS_UNAVAILABLE") ? 503 : 422;
@@ -79,7 +82,9 @@ public final class FetcherServer {
                 }
             } catch (Exception e) { reply(exchange, 500, Map.of("code", "INTERNAL_ERROR")); }
             finally { exchange.close(); }
-        });
+        };
+        server.createContext("/probe", handler);
+        server.createContext("/resolve", handler);
         return server;
     }
 

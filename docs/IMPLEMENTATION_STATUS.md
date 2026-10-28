@@ -1,6 +1,14 @@
 # Implementation status and evidence
 
-Updated 27 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+Updated 28 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+
+## Automatic continuity update
+
+The primary extension flow now accepts only an old HTTPS address. It follows explicitly observed HTTP redirects, Refresh headers, inert meta refresh and `rel=web-switcher-successor` declarations, including an advertised same-origin well-known JSON pointer. It retains an origin-only successor graph for seven days, checks the terminal again before opening, and can skip disappeared intermediate domains using valid remembered links. Source-only following routes future visits through a fresh check; manual mappings remain optional advanced settings. See [automatic continuity](AUTOMATIC_CONTINUITY.md) for the algorithm, demonstration, failure cases and limits.
+
+Declarations establish observed continuity, not ownership or safety. Unknown successors are not guessed. Conflicts, loops, expired history, access denials and TLS errors stop routing. Signed aliases retain a public trust barrier after expiry/revocation/removal so they cannot silently downgrade to source-declared continuity. Private URL parts never cross to the discovered domain.
+
+Current local checks: **140 JavaScript tests passed** (zero failures/skips), including 21 graph tests, 12 transport tests, 21 controller tests and 21 background tests. **83 fetcher Java tests passed** (65 existing plus 18 continuation cases). Manifest/syntax/package checks passed. Native automatic-flow acceptance is added to platform CI; its exact source revision and outcomes will be recorded when the run completes. Earlier validation below describes the preceding platform revision unless explicitly updated.
 
 ## Recovery and current scope
 

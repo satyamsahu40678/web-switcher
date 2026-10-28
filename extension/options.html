@@ -11,22 +11,53 @@
   <div class="web-pattern" aria-hidden="true"></div>
   <div class="shell">
     <header class="topbar">
-      <div class="brand"><img src="spider.svg" alt="" width="40" height="40"><span>Web Switcher</span><span class="badge">LOCAL MAPPINGS</span></div>
+      <div class="brand"><img src="spider.svg" alt="" width="40" height="40"><span>Web Switcher</span><span class="badge">FOLLOW WEBSITE MOVES</span></div>
       <button id="pause-all" class="secondary" disabled>Pause all switching</button>
     </header>
     <main>
-      <section class="intro">
+      <section class="intro continuity-intro">
         <p class="eyebrow">KEEP THE THREAD</p>
-        <h1>Your web,<br><span>reconnected.</span></h1>
-        <p class="lede">Give an old address a new destination. Follow the thread, with a fresh check of your saved mapping every time.</p>
+        <h1>Find the current<br><span>address.</span></h1>
+        <p class="lede">Start with the old website. Follow available move signals and remembered successors to find where it leads today, without entering the new domain yourself.</p>
         <div class="status-line"><span class="status-dot" aria-hidden="true"></span><span id="global-status">Loading local settings…</span><span class="separator">/</span><span>Stored on this device</span></div>
       </section>
       <p id="notice" class="notice" role="status" hidden></p>
+      <section id="continuity" class="card continuity" aria-labelledby="continuity-title">
+        <div class="section-number">01 / FOLLOW THE WEBSITE</div>
+        <h2 id="continuity-title">Where does this old address lead now?</h2>
+        <p class="muted">Web Switcher checks explicit move signals and remembers the chain on this device. If an old host disappears, an already remembered successor can provide the next step. An unknown successor cannot be invented.</p>
+        <form id="continuity-form">
+          <label for="continuity-source">Old website address</label>
+          <input id="continuity-source" name="sourceUrl" type="text" inputmode="url" placeholder="https://old-site.com" required maxlength="8192" autocomplete="off" spellcheck="false" aria-describedby="continuity-disclosure">
+          <p id="continuity-disclosure" class="hint">Your entered page path, query and fragment are discarded before checking. Discovery contacts the public website and its announced successors. Reachability and move signals do not prove ownership or content safety.</p>
+          <label class="check-label"><input id="continuity-wide-access" type="checkbox"><span>Allow automatic checks across HTTPS domains. Chrome will ask for access to HTTPS websites; Web Switcher uses it for the chains you choose to check or follow. Otherwise Chrome asks when a reached origin lacks access.</span></label>
+          <p id="continuity-access-status" class="hint">Your browser retains granted access. Unchecking this box does not revoke an existing grant; review website access in Chrome's extension Details.</p>
+          <button id="continuity-find" type="submit" class="primary">Find current address <span aria-hidden="true">→</span></button>
+        </form>
+        <p id="continuity-status" class="hint" role="status" aria-live="polite">No website checked yet.</p>
+        <div id="continuity-result" class="continuity-result" hidden>
+          <h3 id="continuity-result-title"></h3>
+          <p id="continuity-result-detail" class="hint"></p>
+          <ol id="continuity-chain" class="continuity-chain"></ol>
+          <label id="continuity-follow-label" class="check-label" hidden><input id="continuity-follow-consent" type="checkbox"><span>I want this website to be followed automatically, including future observed successors. Website-declared move signals are unverified; they are not proof of ownership or content safety.</span></label>
+          <div class="actions">
+            <button id="continuity-continue" type="button" class="secondary" hidden>Allow next check</button>
+            <button id="continuity-open" type="button" class="primary" hidden>Open latest address</button>
+            <button id="continuity-follow" type="button" class="secondary" hidden>Follow this website</button>
+          </div>
+          <p class="hint">A newly found address is an observed candidate. Inspect the complete chain before choosing to open it. A familiar name or logo is not proof of continuity.</p>
+        </div>
+        <div class="continuity-saved">
+          <h3>Websites you follow</h3>
+          <p class="hint">Remembered chains can help after an earlier domain goes offline. Pause or remove a followed website whenever you choose.</p>
+          <div id="continuity-followed" class="mapping-list"></div>
+        </div>
+      </section>
       <div class="workspace">
         <section class="card setup" aria-labelledby="new-title">
-          <div class="section-number">01 / CREATE A CONNECTION</div>
-          <h2 id="new-title">Where did it move?</h2>
-          <p class="muted">Add a destination you have checked yourself. A local mapping records your choice; it does not prove website ownership or content safety.</p>
+          <div class="section-number">OPTIONAL / MANUAL OVERRIDE</div>
+          <h2 id="new-title">Already know the destination?</h2>
+          <p class="muted">Use a manual mapping when you have checked the new address yourself. This is separate from automatic continuity checks and does not prove website ownership or content safety.</p>
           <form id="mapping-form">
             <label for="source">Old origin</label>
             <input id="source" name="sourceOrigin" type="url" placeholder="https://old-site.com" required maxlength="512" autocomplete="off" spellcheck="false">
@@ -70,7 +101,8 @@
             <label for="theme">Appearance</label>
             <select id="theme"><option value="system">Follow device setting</option><option value="light">Light</option><option value="dark">Dark</option></select>
             <p class="muted">No account or telemetry. The activity and settings on this page stay in this browser.</p>
-            <button id="clear-local" class="text-button danger" type="button">Delete all local mappings &amp; activity</button>
+            <p class="hint">Deleting local data also removes followed websites and remembered continuity chains.</p>
+            <button id="clear-local" class="text-button danger" type="button">Delete all local data</button>
           </div>
         </div>
       </section>
@@ -87,7 +119,7 @@
           <p class="hint">Only catalogs signed by the keys configured in this build can be accepted. Signature, schema, expiry, sequence, and rollback checks run before activation. Maximum file size: 1 MiB.</p>
         </div>
       </section>
-      <footer><span>Follow the website. Keep control of the destination.</span><span>Local mappings · No account · No telemetry</span></footer>
+      <footer><span>Follow the website. Keep control of the destination.</span><span>Local continuity memory · Manual overrides · No account</span></footer>
     </main>
   </div>
   <dialog id="import-dialog" aria-labelledby="import-title" aria-describedby="import-description">

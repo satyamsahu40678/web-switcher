@@ -1,11 +1,14 @@
 import {ALLOW_TEST_ORIGINS} from './build-config.js';
 import {createMapping, permissionFor} from './core.js';
+import {normalizeSource} from './continuity.js';
 
 const form = document.querySelector('#mapping-form');
 const notice = document.querySelector('#notice');
 let snapshot;
 let saving = false;
 let pendingImport;
+let continuityResult;
+let continuityBusy = false;
 function announce(text, isError = false) {
   notice.hidden = false;
   notice.textContent = text;
@@ -38,6 +41,8 @@ function applyTheme(value) {
 async function render() {
   snapshot = await request({type: 'read'});
   const {config, grantedOrigins, receipts} = snapshot;
+  renderFollowedSites(snapshot.continuity?.sites || []);
+  await refreshContinuityAccess();
   const paused = config.paused;
   const pause = document.querySelector('#pause-all');
   pause.disabled = false;
@@ -133,6 +138,188 @@ function previewMapping() {
     preview.append(element('p', `Does not match ${old.protocol}//sub.${old.hostname} or ${old.protocol}//${old.hostname}.other.invalid.`));
     preview.hidden = false;
   } catch { preview.hidden = true; }
+}
+
+const continuityStatus = document.querySelector('#continuity-status');
+const continuityPanel = document.querySelector('#continuity-result');
+const continuityConsent = document.querySelector('#continuity-follow-consent');
+const continuityFollow = document.querySelector('#continuity-follow');
+function continuityOrigin(value) {
+  return normalizeSource(value, {allowTestOrigins: ALLOW_TEST_ORIGINS});
+}
+function continuityMessage(message, error = false) {
+  continuityStatus.textContent = message;
+  continuityStatus.classList.toggle('continuity-form-error', error);
+}
+async function refreshContinuityAccess() {
+  const status = document.querySelector('#continuity-access-status');
+  try {
+    const wide = await chrome.permissions.contains({origins: ['https://*/*']});
+    status.textContent = wide
+      ? "Broad HTTPS access is currently granted. Unchecking the box does not revoke it; review website access in Chrome's extension Details to remove that grant."
+      : 'Broad HTTPS access is not granted. The browser will ask for each reached origin that does not already have access.';
+  } catch {
+    status.textContent = "Website access could not be read. Review it in Chrome's extension Details. Granted access persists until you revoke it.";
+  }
+}
+function continuitySetBusy(busy) {
+  continuityBusy = busy;
+  document.querySelector('#continuity-source').disabled = busy;
+  document.querySelector('#continuity-wide-access').disabled = busy;
+  document.querySelector('#continuity-find').disabled = busy;
+  document.querySelector('#continuity-continue').disabled = busy;
+  document.querySelector('#continuity-open').disabled = busy;
+  continuityFollow.disabled = busy || !continuityConsent.checked;
+  for (const button of document.querySelectorAll('#continuity-followed button')) button.disabled = busy;
+}
+function renderContinuityResult(result) {
+  continuityResult = result;
+  continuityPanel.hidden = false;
+  continuityConsent.checked = false;
+  const title = document.querySelector('#continuity-result-title');
+  const detail = document.querySelector('#continuity-result-detail');
+  const chain = document.querySelector('#continuity-chain');
+  const proceed = document.querySelector('#continuity-continue');
+  const open = document.querySelector('#continuity-open');
+  const followLabel = document.querySelector('#continuity-follow-label');
+  const messages = {
+    found: ['A reachable address was found', 'This is an observed continuity chain, not registry or owner verification. Inspect each step before opening it or enabling automatic following.'],
+    permission_required: ['The next website needs your permission', 'The chain identified another origin. Approve access to check that origin, then Web Switcher will continue without asking you to enter a destination.'],
+    unknown: ['No supported next address was found', 'There is not enough available or remembered evidence to find a replacement. The extension will not guess a similarly named website.'],
+    conflict: ['The move signals disagree', 'Conflicting successors cannot authorize an automatic choice. No destination will be opened.'],
+    loop: ['The chain returns to an earlier address', 'A cycle is not a current destination. No destination will be opened.'],
+    unavailable: ['The website could not be checked', 'A failed request alone does not establish that the website moved. Previously remembered successors may help on a later check.']
+  };
+  const [heading, explanation] = messages[result.status] || messages.unknown;
+  title.textContent = heading;
+  detail.textContent = explanation;
+  chain.replaceChildren();
+  if (result.sourceOrigin) chain.append(element('li', result.sourceOrigin));
+  for (const hop of result.chain || []) {
+    const row = element('li', `${hop.fromOrigin} → ${hop.toOrigin}`);
+    const evidence = String(hop.evidence || 'move signal').replaceAll('_', ' ');
+    let when = '';
+    if (hop.checkedAt !== undefined && !Number.isNaN(new Date(hop.checkedAt).getTime())) when = ` · ${new Date(hop.checkedAt).toLocaleString()}`;
+    row.append(element('span', `${hop.remembered ? 'Remembered successor · ' : ''}${evidence}${when} · Unverified`));
+    chain.append(row);
+  }
+  if (result.status === 'found' && result.terminalOrigin) {
+    const destination = element('li', `Reachable now: ${result.terminalOrigin}`);
+    destination.className = 'continuity-terminal';
+    chain.append(destination);
+  }
+  proceed.hidden = result.status !== 'permission_required' || !Array.isArray(result.requiredOrigins) || !result.requiredOrigins.length;
+  if (!proceed.hidden) proceed.textContent = `Allow next check: ${result.requiredOrigins.map(continuityOrigin).join(', ')}`;
+  open.hidden = result.status !== 'found' || !result.terminalOrigin;
+  continuityFollow.hidden = !result.sourceOrigin || !['found', 'unknown', 'unavailable'].includes(result.status);
+  followLabel.hidden = continuityFollow.hidden;
+  continuityFollow.disabled = true;
+  continuityMessage(result.status === 'found' ? 'Check complete. No destination was entered manually.' : heading);
+}
+async function grantContinuityOrigins(origins) {
+  const normalized = [...new Set(origins.map(continuityOrigin))];
+  if (!normalized.length || normalized.length > 8) throw new Error('The next permission request is outside supported bounds.');
+  if (!await chrome.permissions.request({origins: normalized.map(permissionFor)})) throw new Error('Website access was not granted. The check did not continue.');
+}
+async function discoverContinuity(sourceOrigin) {
+  continuityMessage('Checking the old origin, its move signals and remembered successors…');
+  const result = await request({type: 'CONTINUITY_DISCOVER', sourceOrigin});
+  renderContinuityResult(result);
+  await render();
+}
+document.querySelector('#continuity-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (continuityBusy || !event.currentTarget.reportValidity()) return;
+  continuitySetBusy(true);
+  continuityPanel.hidden = true;
+  continuityResult = undefined;
+  try {
+    const sourceOrigin = continuityOrigin(document.querySelector('#continuity-source').value);
+    const origins = [permissionFor(sourceOrigin)];
+    if (document.querySelector('#continuity-wide-access').checked) origins.push('https://*/*');
+    // Ask directly in this click gesture; a later fetch cannot manufacture consent.
+    if (!await chrome.permissions.request({origins})) throw new Error('Website access was not granted. No continuity check was started.');
+    await discoverContinuity(sourceOrigin);
+  } catch (error) { continuityMessage(error.message, true); }
+  finally { continuitySetBusy(false); }
+});
+document.querySelector('#continuity-source').addEventListener('input', () => {
+  if (continuityBusy) return;
+  continuityResult = undefined;
+  continuityPanel.hidden = true;
+  continuityConsent.checked = false;
+  continuityMessage('Ready to check this old address.');
+});
+document.querySelector('#continuity-continue').addEventListener('click', async () => {
+  if (continuityBusy || !continuityResult?.requiredOrigins?.length) return;
+  continuitySetBusy(true);
+  try {
+    await grantContinuityOrigins(continuityResult.requiredOrigins);
+    await discoverContinuity(continuityResult.sourceOrigin);
+  } catch (error) { continuityMessage(error.message, true); }
+  finally { continuitySetBusy(false); }
+});
+document.querySelector('#continuity-open').addEventListener('click', async () => {
+  if (continuityBusy || continuityResult?.status !== 'found' || !continuityResult.terminalOrigin) return;
+  continuitySetBusy(true);
+  const expected = continuityResult;
+  try {
+    await request({type: 'CONTINUITY_OPEN', sourceOrigin: expected.sourceOrigin, expectedOrigin: expected.terminalOrigin});
+    continuityMessage('The chain was checked again before opening the observed address.');
+  } catch (error) {
+    document.querySelector('#continuity-open').hidden = true;
+    continuityFollow.hidden = true;
+    document.querySelector('#continuity-follow-label').hidden = true;
+    continuityMessage(`${error.message} Run Find current address again before opening a result.`, true);
+  }
+  finally { continuitySetBusy(false); }
+});
+continuityConsent.addEventListener('change', () => { continuityFollow.disabled = continuityBusy || !continuityConsent.checked; });
+continuityFollow.addEventListener('click', async () => {
+  if (continuityBusy || !continuityResult?.sourceOrigin || !continuityConsent.checked) return;
+  continuitySetBusy(true);
+  try {
+    await grantContinuityOrigins([continuityResult.sourceOrigin]);
+    await request({type: 'CONTINUITY_FOLLOW', sourceOrigin: continuityResult.sourceOrigin, enabled: true});
+    continuityConsent.checked = false;
+    await render();
+    continuityMessage('Following this source. Future visits can check and follow its observed successor chain.');
+  } catch (error) { continuityMessage(error.message, true); }
+  finally { continuitySetBusy(false); }
+});
+function renderFollowedSites(sites) {
+  const list = document.querySelector('#continuity-followed');
+  list.replaceChildren();
+  if (!sites.length) list.append(element('p', 'No followed websites yet. Start with an old address above.', 'hint'));
+  for (const site of sites) {
+    const card = element('article', undefined, 'mapping');
+    card.append(element('span', site.enabled ? 'Following future moves' : 'Following paused', `mapping-state${site.enabled ? '' : ' review'}`));
+    card.append(element('h3', site.sourceOrigin));
+    card.append(element('p', 'Website-declared continuity · Not owner or registry verified', 'provenance'));
+    const controls = element('div', undefined, 'actions');
+    controls.append(action('Check current address', async () => {
+      if (continuityBusy) return;
+      continuitySetBusy(true);
+      try {
+        await grantContinuityOrigins([site.sourceOrigin]);
+        document.querySelector('#continuity-source').value = site.sourceOrigin;
+        await discoverContinuity(site.sourceOrigin);
+        document.querySelector('#continuity').scrollIntoView({block: 'start'});
+      } finally { continuitySetBusy(false); }
+    }));
+    controls.append(action(site.enabled ? 'Pause following' : 'Resume following', async () => {
+      if (!site.enabled) await grantContinuityOrigins([site.sourceOrigin]);
+      await request({type: 'CONTINUITY_FOLLOW', sourceOrigin: site.sourceOrigin, enabled: !site.enabled});
+    }));
+    controls.append(action('Forget this website', async () => {
+      await request({type: 'CONTINUITY_FORGET', sourceOrigin: site.sourceOrigin});
+      if (continuityResult?.sourceOrigin === site.sourceOrigin) { continuityResult = undefined; continuityPanel.hidden = true; }
+      continuityMessage('The followed source and its selected continuity memory were removed. Review retained website access in Chrome settings if needed.');
+    }, 'text-button'));
+    card.append(controls);
+    list.append(card);
+  }
+  for (const button of list.querySelectorAll('button')) button.disabled = continuityBusy;
 }
 form.addEventListener('input', previewMapping);
 form.addEventListener('change', previewMapping);
@@ -238,8 +425,15 @@ document.querySelector('#confirm-import').addEventListener('click', async event 
   finally { button.disabled = false; }
 });
 document.querySelector('#clear-local').addEventListener('click', async () => {
-  if (!confirm('Delete all local mappings and routing activity? This cannot be undone. Export a backup first if you need it.')) return;
-  try { await request({type: 'CLEAR_LOCAL_DATA'}); await render(); announce('All local mappings and routing activity deleted.'); }
+  if (!confirm('Delete all local mappings, followed websites, continuity memory and routing activity? This cannot be undone. Export mapping settings first if you need them.')) return;
+  try {
+    await request({type: 'CLEAR_LOCAL_DATA'});
+    continuityResult = undefined;
+    continuityPanel.hidden = true;
+    await render();
+    announce('Local mappings, followed websites, continuity memory and routing activity deleted.');
+    continuityMessage('No local continuity memory remains.');
+  }
   catch (error) { announce(error.message, true); }
 });
 chrome.storage.local.get('uiTheme').then(({uiTheme = 'system'}) => {
@@ -247,7 +441,11 @@ chrome.storage.local.get('uiTheme').then(({uiTheme = 'system'}) => {
   document.querySelector('#theme').value = ['light', 'dark'].includes(uiTheme) ? uiTheme : 'system';
 }).catch(() => {});
 const source = new URLSearchParams(location.search).get('source');
-if (source) { document.querySelector('#source').value = source; previewMapping(); }
+if (source) {
+  document.querySelector('#source').value = source;
+  document.querySelector('#continuity-source').value = source;
+  previewMapping();
+}
 render().catch(error => announce(error.message, true));
 
 async function importCatalog(text) {

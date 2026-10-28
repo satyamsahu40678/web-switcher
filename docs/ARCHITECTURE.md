@@ -1,60 +1,86 @@
 # Web Switcher architecture
 
-Web Switcher follows an explicitly selected local mapping or a signed, reviewed migration record. It abstains when it lacks a current supported decision. Reachability, site identity, and deep-page compatibility are separate questions.
+Web Switcher's primary browser flow discovers a current destination from an old address and explicit successor evidence. The user supplies the old source only, inspects the chain and can enroll that source for automatic future following. Manual mappings and signed reviewed registry decisions remain separate policies with precedence for their exact sources. Reachability, historical identity and deep-page compatibility are distinct questions.
 
-## Components
+## Components and authority
 
-| Path | Responsibility | Trust boundary |
+| Path | Responsibility | Boundary |
 | --- | --- | --- |
-| `extension/` | MV3 background, selected-origin DNR rules, local route gate, settings and popup | Runs packaged code; no remote scripts or automatic per-navigation lookup |
-| `packages/security/` | Closed signed-record validation, browser Web Crypto ES256 verification, sequence/digest memory, experimental owner CLI | Signature authenticity does not establish website identity |
-| `apps/web/` | React public lookup/report interface and review/publish console | Same-origin session authentication; untrusted evidence is rendered as text |
-| `backend/` | Java 21/Spring API, JDBC/Flyway persistence, review records, durable budgets, signed catalog publication and audit | Public submissions never directly become active routes |
-| Separate `worker` profile | Durable leased discovery jobs and bounded internal fetcher calls | No HTTP listener, OIDC client or publishing key; observations only enter pending review |
-| `fetcher/` | Separately authenticated, bounded HTTPS probe process | No DB or registry signing credentials; deployment must also constrain egress |
-| `research/` | Preserved feasibility experiments and historical results | Synthetic demonstrations are not real-world effectiveness results |
-| `infra/` | Local demo containers and backup/release support | A configuration file is not evidence of deployed isolation |
+| extension/continuity-probe.js | Scoped browser requests and bounded non-executing HTTP/meta successor extraction | Source-declared observations; no browser DNS/connect-IP pinning claim |
+| extension/continuity.js | Validated origin-only graph, edge freshness, bounded resolution and remembered-successor recovery | Does not create registry/owner trust or invent unseen domains |
+| extension/continuity-worker.js and continuity-gate.* | Source-only enrollment, DNR gate, current discovery, permission/confirmation controls | Only selected followed sources; packaged code; manual/signed overrides take precedence |
+| Remaining extension modules | Manual mappings, signed catalog adapter, local receipts/undo and settings | Current generation, expiry, permissions and loop checks run at use time |
+| packages/security/ | Closed catalog/passport records, ES256 verification and sequence/digest memory | Signatures authenticate a pinned key, not website safety or historical ownership by themselves |
+| apps/web/ and backend/ | Public lookup/report UI, JDBC/Flyway records, review/publication/auth/audit | Public submissions never directly activate a signed route |
+| Separate worker profile | Durable leased server discovery jobs | No listener, OIDC client or publishing key; pending candidate output only |
+| fetcher/ | Internal authenticated /probe and /resolve observation service | DNS/address/socket checks, HTTPS/robots/resource bounds; deployed egress enforcement required |
+| research/ and infra/ | Historical experiments, reproducible checks and deployment/recovery support | Synthetic checks and configuration are not production effectiveness/isolation evidence |
 
-The extension remains packaged plain JavaScript so the recovered gate can be exercised directly. React/TypeScript is used for the web application; the proposed WXT extension migration is not represented as complete.
+The extension remains packaged plain JavaScript; React/TypeScript is used for the web application. WXT migration is not represented as complete. The direct browser continuity flow needs neither the Java API nor a deployed server fetcher.
 
-## Navigation
+## Source-only discovery and linked memory
 
-```mermaid
+~~~mermaid
 flowchart LR
-    A[Selected old origin] --> B[GET main-frame DNR rule]
-    B --> C[Packaged local gate]
-    C --> D{Current policy valid?}
-    D -->|Yes| E[Approved destination]
-    D -->|No| F[Stop and explain]
-```
+    A[Old address only] --> P[Selected source permission]
+    P --> O[Read explicit HTTP or metadata successor]
+    O --> V{Unique supported next address?}
+    V -->|Yes| N[Validate URL and next-origin access]
+    N --> O
+    V -->|Terminal responds| R[Explain source-declared chain]
+    R --> U[User opens or follows the source]
+    V -->|No evidence or conflict| X[Explain unknown or refusal]
+    M[Fresh remembered edges] --> O
+~~~
 
-The gate resolves the destination from current local state. It never trusts a `target=` parameter. It checks mapping/catalog generation, source identity, expiry, pause and permissions again at use time. Query strings and fragments are dropped. Sensitive or ambiguous paths require a separate user decision. Session loop guards prevent repeated switching in one tab; stored receipts contain origin pairs and timestamps rather than original paths.
+The probe requests one validated URL at a time using manual redirect handling. Chrome fetch does not expose Location from an opaque redirect response, so webRequest captures headers only for the extension's correlated active requests. The engine validates the announced next URL and checks its permission before a separate request; it does not let fetch automatically follow an unvalidated redirect. Cookies/HTTP credentials and referrers are omitted, and downloaded scripts are not evaluated.
 
-DNR only intercepts top-level GET navigation for selected granted source origins. POSTs, iframes, subresources, unlisted subdomains and lookalike hostname suffixes are outside that rule. Browsers may discard source fragments before request matching, so fragment preservation is unsupported.
+HTTP Location, short Refresh declarations, HTML meta-refresh and the project's explicit successor link convention can supply edges. A same-origin project JSON pointer is fetched only when advertised. Ordinary links, canonical/og values and name/logo matches are not automatic identity evidence.
 
-## Review and publication
+The graph stores origin-only edges and timestamps for a seven-day validity window. If A→B→C was previously observed, a qualifying DNS/connection failure, timeout or explicit HTTP 404/410 at A can use its unique known B successor and continue checking. A later explicit C→D can extend the chain. The terminal address must be checked now. No stored edge to an unseen D exists merely because C is dead. Conflicting successors, loops, stale history, HTTP authorization/throttling responses, TLS/CORS failures and unsafe inputs stop automatic resolution. Bounds and exact behavior are in [automatic continuity](AUTOMATIC_CONTINUITY.md).
 
-```mermaid
+## Following on navigation
+
+~~~mermaid
 flowchart LR
-    A[Untrusted report] --> B[Pending candidate]
+    A[Visit selected followed source] --> B[GET main-frame DNR rule]
+    B --> C[Packaged continuity gate]
+    C --> D{Current enrollment, pause and permission valid?}
+    D -->|Yes| E[Resolve live and remembered successor chain]
+    E --> F{Reachable supported terminal?}
+    F -->|Yes| G[Discovered homepage]
+    F -->|Needs permission or sensitive confirmation| H[Explain and wait]
+    F -->|Unknown, conflict or unavailable| I[Stop and explain]
+    E -->|Live original with no move or history| J[Tab-scoped original navigation bypass]
+    D -->|No| I
+~~~
+
+Following requires explicit source-only enrollment and consent to unverified source-declared moves. Checking a source does not itself enable interception. By default new origins require user permission; an optional off-by-default HTTPS-wide grant allows further chain checks without repeated permission prompts. It does not enroll all websites.
+
+The gate rejects forged/stale envelopes and reads current enrollment/configuration, permissions and global pause again. It rechecks the discovered terminal before routing and binds confirmation to the displayed destination. Cross-domain continuity uses a homepage policy, drops original query/fragment/path information, and confirms sensitive original links. Session attempt guards stop repeated switching in a tab. A live unmoved original can resume its own original URL via a bounded tab-scoped bypass without being called a migration. Source URL data is removed from the gate's visible history entry before asynchronous work.
+
+DNR interception covers only top-level GETs for selected granted origins. POSTs, iframes, subresources, unlisted hosts and suffix lookalikes are outside those rules. Manual or signed registry policy reserves its source ahead of the unverified continuity lane. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion; a corrupt/incomplete signed reservation history blocks the weaker lane rather than silently re-enabling it. This public security metadata inhibits unverified routing and does not restore expired signed authority.
+
+## Separate reviewed registry lane
+
+~~~mermaid
+flowchart LR
+    A[Untrusted report or server observation] --> B[Pending candidate]
     B --> C[Reviewer decision]
-    C --> D[Pending publication]
-    D --> E[Different authorized publisher]
-    E --> F[Immutable signed catalog]
-    F --> G[Client signature/schema/freshness checks]
-    G --> H[Local gate]
-```
+    C --> D[Different authorized publisher]
+    D --> E[Immutable signed catalog]
+    E --> F[Client signature/schema/freshness/high-water checks]
+    F --> G[Current local gate]
+~~~
 
-Pending reviewer decisions and activated catalog data stay separate. Catalog publication uses a monotonically increasing sequence and immutable signed bytes. A client remembers sequence plus digest and rejects rollback or same-sequence conflicts. A lower environment or staging key must never become a production trust anchor merely because the same API serves it.
+The direct browser's source_declared result never becomes registry_reviewed or owner_verified automatically. Server queue discovery still leaves public results unknown while candidates await independent review/publication. A registry signature, monotonic sequence/digest and expiry authenticate published decisions separately from the browser's local observation graph. The [server queue guide](DISCOVERY.md) and [restricted worker grants](DISCOVERY_DATABASE.md) describe that deployment, which is disabled in the default public topology.
 
-Optional discovery follows an explicit hostname lookup through a durable job, a separate non-web worker and the isolated fetcher. A cross-origin redirect observation can create a pending candidate; the public lookup still returns `unknown`. It cannot activate a family or bypass independent review/publication. [Discovery](DISCOVERY.md) documents limits, leases and abstention; [database isolation](DISCOVERY_DATABASE.md) documents the opt-in PostgreSQL worker role. The default public deployment keeps this network work disabled.
+The public API role refuses a private publishing key. A separate publisher role requires one, and its deployed private ingress, OS identities and immutable PostgreSQL grants must be verified. Demo keys/accounts are synthetic and are not production trust anchors. The offline owner CLI does not complete enrollment, domain-control proof, transfer or key recovery.
 
-The local demo creates its own persistent signing key and synthetic `.test` family. That key is not a production root. Outside demo, `APP_ROLE=api` refuses a private publishing key and `APP_ROLE=publisher` requires one. An API process without a key cannot publish. Startup and endpoint role checks exist, but OS identity, distinct DB privileges, immutable database grants and a key-isolated publisher deployment remain production gates.
+## Privacy and network limits
 
-## Data and network policy
+Browser continuity stores selected origins, evidence kinds and observation times locally. It discloses the requester's IP/request timing to sites it directly checks. Broad optional HTTPS access is a capability that users must deliberately choose; it is not ordinary browsing-history collection. Clearing local data includes followed sources, their graph and routing activity. Public catalog high-water/alias-reservation metadata is retained to prevent signature replay and trust downgrade. See the [extension privacy page](privacy.html).
 
-An explicit public lookup sends a hostname only; it still discloses the requester's IP to the service. Reports contain two hostnames and a free-text reason, so users must omit private data. There is no universal discovery service, automated trust promotion, or client browsing-history upload.
+The browser validates literal URLs/private/reserved host forms but cannot pin the browser's DNS answer or connected peer. Do not claim server-grade SSRF protection for this lane. The optional server fetcher separately validates all DNS answers, pins connected addresses, preserves TLS hostname checks and bounds redirects, bytes, robots and time. An actual firewall/egress boundary must independently deny private/metadata/application networks; an ordinary managed CONNECT proxy cannot prove its connect IP, so the fetcher refuses that mode. Building its JAR does not deploy public crawling.
 
-The fetcher validates every DNS answer, pins allowed addresses through its transport, preserves TLS hostname verification and bounds redirects, bytes and time. A deployed firewall/proxy must independently block private, metadata and application networks. Its supported direct-connect model cannot prove the upstream peer IP through an arbitrary HTTP CONNECT proxy. Public crawling is not enabled merely by building its JAR.
-
-The [novelty and evidence report](NOVELTY_AND_EVIDENCE.md) identifies which continuity mechanisms are implemented, their test boundaries and the untested owner/graph research hypothesis. Established signatures, redirect rules and database leases are building blocks rather than new cryptographic or distributed-systems inventions.
+The [novelty and evidence report](NOVELTY_AND_EVIDENCE.md) separates implemented chain recovery from untested owner/temporal-graph research and established prior art.

@@ -14,7 +14,8 @@
     "storage",
     "declarativeNetRequestWithHostAccess",
     "activeTab",
-    "alarms"
+    "alarms",
+    "webRequest"
   ],
   "optional_host_permissions": [
     "http://*/*",
@@ -36,7 +37,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "route.html"
+        "route.html",
+        "continuity-gate.html"
       ],
       "matches": [
         "<all_urls>"

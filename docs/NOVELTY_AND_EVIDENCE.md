@@ -1,63 +1,67 @@
-# Continuity design, novelty and evidence
+# Automatic continuity, novelty and evidence
 
-Updated 27 October 2026 (Asia/Kolkata).
+Updated 28 October 2026 (Asia/Kolkata).
 
-Web Switcher's proposed contribution is a website-continuity workflow: preserve a reviewed relationship between an old hostname and a current destination, distribute a short-lived signed decision, and recheck that decision locally before navigation. Unknown relationships remain unknown while bounded discovery collects observations for review. The implementation combines these mechanisms in a runnable browser/API/worker system. Academic novelty and improved recovery effectiveness have **not** been established.
+Web Switcher's primary engineering goal is to find a current address **from an old address without asking the user to supply its replacement**. The browser follows explicit HTTP/metadata successor declarations, remembers their origin-only chain and can reuse a fresh successor after an earlier known host stops resolving. Manual mappings remain an override. The reviewed signed-registry system remains a separate authority rather than a prerequisite for this local browser flow.
 
-The [complete research plan](WEB_SWITCHER_PLAN.md), especially sections 3–4 and 16, contains the original research question and dated source review. This document describes the current implementation and the evidence needed for stronger claims. The [validation ledger](IMPLEMENTATION_STATUS.md) records executed outcomes and exact tested revisions; the presence of a test below does not imply that every future revision has passed it.
+This addresses the linked-list idea directly: observe A→B→C, preserve the edges, then check B/C when A is unavailable and learn C→D when that declaration later appears. It does not create a universal latest-domain service. An unseen D cannot be inferred when every known source is dead. Academic novelty and improved real-world recovery effectiveness have **not** been established.
 
-## What is distinctive in this implementation
+The [complete plan](WEB_SWITCHER_PLAN.md), especially sections 3–4 and 16, records the original research question and dated source review. This report supersedes earlier descriptions that made the manual/reviewed mapping workflow the only delivered browser behavior. [Automatic continuity](AUTOMATIC_CONTINUITY.md) documents current mechanisms and limits. The [validation ledger](IMPLEMENTATION_STATUS.md) and exact-source CI runs record executed outcomes; test source alone is not a passing run.
 
-The useful design unit is the complete decision chain, rather than any one cryptographic or browser primitive:
+## Implemented contribution and distinct authority lanes
 
-1. A hostname-only lookup returns an existing reviewed decision or abstains. Optional discovery creates a durable, bounded job.
-2. A separate keyless worker asks an isolated authenticated fetcher for redirect observations. A cross-origin observation becomes a pending, explicitly unverified candidate.
-3. A reviewer records a reason. A different actor must publish the pending decision before it can affect the signed catalog. Public reports, live responses and successful probes have no direct activation path.
-4. The publisher produces immutable ES256 JWS bytes with a monotonically increasing sequence, expiry, exact aliases, terminal destinations, reason codes and a closed path policy. The client verifies a pinned public key and retains its sequence/digest checkpoint separately from disposable cache data.
-5. The extension uses selected source permissions and a packaged local gate. At use time the gate rechecks current state, generation, validity, permissions, path handling and the tab's family loop guard. A catalog download does not grant permanent authority to navigate.
-6. The user can pause switching, inspect origin-only receipts, remove mappings and request a narrowly scoped undo. Local overrides retain local-user provenance and cannot acquire registry or owner trust by import.
+The useful unit is a bounded continuity decision chain assembled from established techniques:
 
-This composition is an engineering contribution and a candidate for evaluation. Signatures, mutable pointers, redirect rules, independent approvals, leases and abstention all have established precedents. No new cryptographic primitive, general replacement-domain discovery algorithm or proof of domain ownership is claimed.
+1. A user supplies an old HTTPS address or starts from the popup's current-origin prefill. No new-domain field is required.
+2. A scoped browser probe inspects HTTP Location/Refresh, short HTML meta-refresh and explicit project successor metadata without executing the page's scripts. Manual fetch handling plus correlated webRequest headers exposes the proposed next hop before a separate permission-checked request.
+3. A bounded local graph stores origin-only edges, evidence kinds and freshness. A qualifying failure of A can follow its unique fresh remembered A→B edge, then recheck B and later nodes. The result claims a reachable terminal only after checking it now.
+4. The user can inspect the chain and open the found homepage, or explicitly enroll the old source for automatic following. On later selected-site visits, a packaged gate rechecks current enrollment, pause, permissions, the chain, sensitive-link policy and tab loop controls.
+5. Manual source→destination choices and signed reviewed catalogs keep their separate provenance and precedence. Previously trusted signed aliases remain reserved after expiry, withdrawal or cache deletion, preventing fallback to weaker continuity authority. A source-declared observation never silently gains registry_reviewed or owner_verified status.
+6. The optional backend can collect candidate observations under stronger server-side network isolation, independent review/publication and signed distribution. Its candidate-only output does not alter the local graph's trust class or automatically publish a route.
 
-### A concrete example
+This composition and its recoverability/abstention behavior are the candidate engineering contribution. HTTP redirects, persistent links, graphs, signatures, approvals and leases all have prior art. No new cryptographic primitive, general domain-search algorithm or ownership proof is claimed.
 
-Suppose an operator moves public documentation from `old.example` to `current.example`. A live HTTP redirect is useful evidence, but a compromised or re-registered old domain could also redirect to an attacker. The discovery worker therefore queues a candidate and leaves public lookup at `unknown`. A reviewer checks independent continuity evidence; a separate publisher releases a bounded decision. Only then can a client with the intended trust anchor and source grant offer the reviewed destination.
+### Concrete sequence and failure boundary
 
-For an approved `/docs/` path policy, a public documentation path can survive the switch while query and fragment data are dropped. An account/reset link or ambiguous encoded path stops for confirmation. A subsequent signed revocation or expiry removes routing authority. A client that remains offline can learn no new revocation until refresh; the existing decision's validity window is its upper bound.
+Suppose public documentation moves A→B→C. The extension initially discovers both explicit links and records their origins and times. A later DNS failure at A does not erase that knowledge: it can try the previously learned B link and continue until it checks C. If C later declares D, the chain can extend to D without the user entering D manually.
 
-This example is illustrative. The repository's tests use controlled `.test`/`.example` fixtures and do not establish the ownership or safety of any public site named in the historical plan.
+If C dies before C→D was observed, local memory supplies no D. A fresh conflicting A→attacker claim does not silently overwrite an unexpired A→B relationship. Unknown, stale, conflicting, looping or unsupported evidence produces a refusal/explanation. A live 200 page with no move declaration is not treated as proof that the old family moved, and a generic canonical link or similar logo is not a replacement-domain certificate.
 
-## Implemented controls and executable evidence
+A compromised old source can itself issue a plausible redirect. The source-declared lane remains unverified even when it is reachable and internally consistent. Users explicitly choose whether to open/follow it; independent review and pinned owner proofs remain different capabilities. Real public examples supplied in the conversation are not hardcoded production seeds or verified ground truth.
 
-| Claim supported by the implementation | Source and checks | Limit of the evidence |
+## Controls and executable evidence
+
+| Implemented property | Source and executable checks | Evidence boundary |
 | --- | --- | --- |
-| Only exact, currently authorized source navigation is eligible | [core routing](../extension/core.js), [worker](../extension/background.js), [core tests](../tests/core.test.mjs), [background tests](../tests/background.test.mjs); native browser B02–B17 in [browser suite](../tests/browser.mjs) | Native fixture source grants are pregranted. Actual optional permission prompts, branded Chrome/Edge and store installs need separate acceptance. |
-| Browser actions can use short-lived data without treating stale DNR rules as authority | Gate checks expiry, clock reversal, pause and generation; core tests and native B08–B10 | The machine clock is not an independent time authority. An expired rule can still open a gate which must refuse navigation. |
-| A signed alias cannot bypass privacy/path checks or manufacture trust for a local override | [catalog adapter](../extension/catalog-adapter.js), [adapter tests](../tests/catalog-adapter.test.mjs); native B12–B13 and B18 | Query/fragment removal and origin-only receipts are checked in controlled flows. This does not substitute for a full release network-capture/privacy review. |
-| A family with several aliases shares tab-local loop protection | Background tests `signed aliases share a per-family loop guard` and `manual and confirmation previews...`; native B14 exercises a destination return | This bounds a tested browser loop; it is not general cycle detection across the internet. |
-| A forged, stale or conflicting catalog is refused before installation | [shared verifier](../packages/security/catalog.mjs), [security tests](../packages/security/catalog.test.mjs), background atomic-install/high-water tests | Public trust anchors must be installed through a trusted distribution channel. A compromised trusted signer can issue authentic malicious records. |
-| A candidate/review does not activate a route | [registry](../backend/src/main/java/dev/webswitcher/api/Registry.java), [API integration tests](../backend/src/test/java/dev/webswitcher/api/ApiIntegrationTest.java), [real browser end-to-end](../apps/web/tests/e2e-browser.mjs) | Separation of application actors needs matching deployed identities, private publisher ingress and DB grants. Human review can still be wrong or collusive. |
-| Discovery output stays unverified, including after successful work | [queue](../backend/src/main/java/dev/webswitcher/api/DiscoveryQueue.java), [client](../backend/src/main/java/dev/webswitcher/api/DiscoveryClient.java), [queue tests](../backend/src/test/java/dev/webswitcher/api/DiscoveryQueueTest.java), [integration test](../backend/src/test/java/dev/webswitcher/api/DiscoveryIntegrationTest.java) | Integration uses a real HTTP internal-contract fixture. It asserts a pending candidate, no public destination and byte-identical catalog; it does not contact a real migrated site. |
-| Queue work has durable cost/concurrency bounds | Queue tests cover deduplication, negative cache, pre-dispatch hourly/daily/host budgets, leases, stale owners, retries and TTL; client tests cover fixed endpoint/no internal redirect and bounded closed-schema responses | These are configured ceilings and correctness checks, not measurements of production capacity, cost or availability. |
-| Public API, discovery worker, fetcher and signer can have different authority | [worker boundary tests](../backend/src/test/java/dev/webswitcher/api/DiscoveryWorkerBoundaryTest.java), [production boundary test](../backend/src/test/java/dev/webswitcher/api/ProductionBoundaryTest.java), [deployment role tests](../infra/deploy/test-db-grants.py), opt-in [worker grants](DISCOVERY_DATABASE.md) | Docker/process configuration alone does not establish host isolation. Operators must provision distinct secrets, grants and network boundaries. |
-| A malicious redirect cannot become an unrestricted fetch request | [fetcher source/tests](../fetcher/src/), including public-address/mixed-DNS/rebinding/redirect/actual-socket checks | Tests use injected safe transports and loopback internal API fixtures. Deployed direct public DNS/TLS and network/firewall enforcement remain required. Ordinary CONNECT proxy egress fails closed. |
-| Experimental owner records bind a pinned key's ordered history | [owner CLI](../packages/security/owner-cli.mjs), [CLI tests](../packages/security/owner-cli.test.mjs), verifier owner-context/genesis/previous-hash tests | A self-signed record does not enroll an owner or prove control of old/new domains. Rotation, transfer, loss and recovery are not implemented. |
+| The user supplies only the old address | [options UI](../extension/options.js), [popup](../extension/popup.js), [UI contract](../tests/continuity-ui.mjs), [native continuity journey](../tests/continuity-browser.mjs) | A mocked UI contract is not native permission acceptance. Final outcomes belong to the ledger/CI revision. |
+| Every next network hop is inspected before a separate request | [probe](../extension/continuity-probe.js), [probe tests](../tests/continuity-probe.test.mjs), [native header-capture proof](../tests/continuity-probe-browser.mjs) | Browser literal URL checks are not DNS/connect-IP pinning. Scoped access and omitted credentials reduce authority; they do not prove historical identity. |
+| Explicit metadata is bounded and non-executing | Probe parser/response bounds; hostile/inert/ambiguous metadata cases in probe tests | Arbitrary JavaScript, canonical/og guesses, ads and general web search are not supported migration authority. |
+| Known old-host failures can reuse observed successor history | [graph](../extension/continuity.js), [graph tests](../tests/continuity.test.mjs), native continuity journey | Requires a unique unexpired link and a qualifying failure. It cannot invent a successor never observed. A stored terminal is rechecked before being presented as reachable. |
+| A later last-node declaration extends a chain | Graph A→B→C then C→D cases and native journey | A time-bounded observational graph is not a complete ownership-transfer/mirror/split-site inference model. Conflicting successor claims stop resolution. |
+| Selection and current policy govern automatic navigation | [controller](../extension/continuity-worker.js), [continuity gate](../extension/continuity-gate.js), graph/native journey, existing [worker tests](../tests/background.test.mjs) | Only enrolled sources receive continuity rules. Optional broad HTTPS access is explicit and off by default. Actual Chrome/Edge permission UX remains separate release acceptance. |
+| No raw original path/query/fragment is transferred through a cross-domain continuity switch | Source normalization, homepage gate policy and sensitive confirmation; native continuity/legacy core checks | Continuing an unmoved original on its own origin can preserve its original URL. No complete all-flow privacy-capture claim follows from a few fixtures. |
+| Manual imports cannot manufacture shared identity trust | [core](../extension/core.js), [core tests](../tests/core.test.mjs), [background tests](../tests/background.test.mjs) | Local intent is not website ownership. Manual/signed policy takes precedence for its exact source. |
+| Signed catalogs reject forged/stale/conflicting data | [shared verifier](../packages/security/catalog.mjs), [security tests](../packages/security/catalog.test.mjs), [adapter tests](../tests/catalog-adapter.test.mjs) and native signed-routing suite | Trust anchors need trusted distribution; a compromised trusted signer can sign malicious data. |
+| Reports/server observations do not activate signed routes | [registry](../backend/src/main/java/dev/webswitcher/api/Registry.java), [API tests](../backend/src/test/java/dev/webswitcher/api/ApiIntegrationTest.java), [real web journey](../apps/web/tests/e2e-browser.mjs), server discovery tests | Role separation requires genuine deployed identities/grants and a private publisher. Human review can be wrong or collusive. |
+| Hardened server resolution remains separate | [fetcher](../fetcher/README.md), injected transport and authenticated internal endpoint tests | Internal /resolve supports HTTP/meta chains; /probe stays compatible. Deployed DNS/TLS/firewall controls are not established by mocked transports. Ordinary CONNECT proxy egress fails closed. |
+| Owner records can be signed/checked offline | [owner CLI](../packages/security/owner-cli.mjs), [CLI tests](../packages/security/owner-cli.test.mjs) | Self-signatures do not enroll an owner, prove old/new domain control, or supply rotation/recovery/transfer. |
 
-Run results and fixture artifacts belong to a specific source revision. CI artifacts include reports under `test-results/`; they are not a dataset of real website migrations. See [backup drill evidence](BACKUP_RESTORE_DRILL.md) and [publisher key handling](SIGNING_KEYS.md) for operational controls that support reproducibility but do not establish discovery novelty.
+Fixture artifacts are deterministic engineering evidence, not a real website migration dataset or recovery-accuracy measurement. [Backup recovery](BACKUP_RESTORE_DRILL.md), [restricted worker identity](DISCOVERY_DATABASE.md) and [publisher keys](SIGNING_KEYS.md) support operational reproducibility; they do not establish research novelty.
 
 ## Threat model and remaining trust
 
-| Adversary or failure | Implemented response | Remaining exposure |
+| Failure/adversary | Implemented response | Remaining exposure |
 | --- | --- | --- |
-| Clone, parked domain, misleading redirect or malicious report | Observation/report stays unverified; independent review and publication precede routing | There is no implemented general clone/parked-site classifier, threat feed or automated historical identity proof. |
-| Old catalog replay, same-sequence replacement or expired mapping | Pinned signature verification, sequence/digest memory, closed schemas and use-time expiry | New-profile bootstrap, trusted-key distribution, device clock error and signer compromise still need operational policy. |
-| Configuration update races or stale gate | Serialized writes, generation check, atomic catalog activation and confirmation bound to exact current destination | Actual browser suspension/races outside the tested matrix remain release work. |
-| Sensitive URL passed to a different origin | Hostname-only explicit lookups; bounded local envelopes; query/fragment removal; sensitive/ambiguous path confirmation | The destination sees the selected cleaned URL. Origin receipts, IP-based abuse controls and user-entered reports can still reveal information. |
-| SSRF, DNS rebinding or internal credential forwarding | Separate fetcher, public-address and connected-socket checks at each hop, TLS hostname verification, bounded responses, fixed internal client endpoint | Production firewall and actual egress tests are prerequisites. The internal bearer authenticates a service, not its evidence's truth. |
-| Stalled/crashed worker or resource exhaustion | Durable budgets, expiring lease, stale-owner exclusion, retry ceiling, TTL and bounded response/time limits | Queue service and operations need monitoring; no production SLO follows from local tests. |
-| Compromised publisher/owner key or dishonest authorized reviewer | Role separation, immutable releases/audit, expiry and signed withdrawal; offline key tooling | An authorized malicious statement can verify correctly. Independent witnesses, key recovery and an incident drill remain needed. A single audit log is not consensus. |
+| Misleading page link, clone, parked source or changed ownership | Explicit supported signals only; source-declared label; bounded memory/conflict refusal; stronger reviewed lane remains separate | There is no general clone/parked-site classifier, threat feed or automatic historical owner proof. A compromised source can make a consistent malicious declaration. |
+| Dead intermediate origin | Try a unique fresh remembered successor only for qualifying DNS/connection/timeout failure or explicit HTTP 404/410; check the next node now | Missing/expired history, TLS/CORS failure, HTTP denial/throttling or unseen final moves remain unresolved. |
+| Hostile metadata or executable page | Inert bounded parsing, no arbitrary JavaScript execution, closed project JSON, separate manual-hop requests | Supported syntax is deliberately limited; obfuscated/script-only moves may not be discovered. |
+| Credential/private URL exposure | Root-only initial probe, omitted cookies/HTTP credentials/referrer, origin-only stored graph and cross-domain homepage routing | Checked sites see IP/timing. The destination sees a normal navigation. User-entered reports and local origins can reveal interests. |
+| DNS rebinding or private-network destination | Literal/reserved URL exclusions in browser; independent pinned-address/egress controls in the server lane | The browser does not offer the server's peer-IP pinning guarantee. Grant broader host access knowingly and verify server deployment separately. |
+| Loop, stale history or resource exhaustion | Origin/URL visit sets, validity/time checks, request/hop/body/time/storage bounds, tab attempt guard | A device clock is not an independent time authority; production availability/capacity is unmeasured. |
+| Catalog replay or signer compromise | Pinned ES256, high-water sequence/digest, expiry and withdrawal | New-profile trust bootstrap, key custody/recovery and offline revocation latency require operator policy. |
+| Colluding reviewer/publisher or compromised owner key | Separate recorded roles, immutable release/audit mechanics and explicit trust labels | A valid authorized statement can still be false; independent witnesses and complete recovery remain unimplemented. |
 
-The registry's `registry_reviewed` class means a recorded review was published by the configured registry. It is not a claim of malware freedom, legal authorization, owner-signed continuity or future content safety. The schema can represent `owner_verified`, but the current publisher does not create that class from the offline CLI or discovery output.
+The browser's source_declared class is an observation plus user opt-in. The registry_reviewed class is a published registry decision. Neither is a malware warranty or an owner signature. The schema's owner_verified class is not created by browser discovery or the standalone signing CLI.
 
 ## Relationship to prior work
 
@@ -65,7 +69,7 @@ The following comparisons reuse the first-party sources recorded on 25 October 2
 
 | Prior work or established mechanism | Overlap | What this project is investigating |
 | --- | --- | --- |
-| HTTP redirects and manually edited bookmarks | A known old address points to a known new address | A separately distributed reviewed pointer can remain usable after the original redirect disappears. It cannot discover an unseen successor from no evidence. Bookmarks themselves are not rewritten by the extension. |
+| HTTP redirects and manually edited bookmarks | A known old address points to a known new address | Remembered successor edges or a separately distributed reviewed pointer can remain usable after an earlier redirect source disappears. Neither can discover an unseen successor from no evidence. Bookmarks themselves are not rewritten by the extension. |
 | [Redirector](https://github.com/einaregilsson/Redirector) and [Dynamic Domain Redirector](https://addons.mozilla.org/en-US/firefox/addon/dynamic-domain-redirector/) | Configured URL/domain rewrite rules | Integrate expiry, trust provenance, reviewed publication and local navigation checks. Simple configured redirects are prior art. |
 | [LibRedirect](https://github.com/libredirect/browser_extension) and its [instance registry](https://github.com/libredirect/instances) | Browser extension plus maintained endpoint data | Represent continuity of one site family across domains. Alternative frontends and mirrors are not automatically the same identity relationship. |
 | [FABLE, IMC 2023](https://conferences.sigcomm.org/imc/2023/program/) and its [artifact](https://github.com/JingyZhu/FABLE) | Automatic relocation of broken links using learned URL transformations | Evaluate cross-domain continuity, temporal trust and controlled abstention alongside a browser deployment. FABLE has not been reproduced or outperformed here. |
@@ -89,20 +93,22 @@ The historical local HTTP experiment demonstrates why remembered shortcuts and a
 
 ## Reproduce the implemented checks
 
-Use the versions and prerequisites in the [root guide](../README.md) and [cloud setup script](../scripts/setup-cloud.sh). From the repository root:
+Use the [root guide](../README.md), pinned dependencies and [cloud setup script](../scripts/setup-cloud.sh). From the repository root:
 
-```sh
+~~~sh
 npm ci
 npm test
+npm run check
+npm run package
+node tests/continuity-probe-browser.mjs
+node tests/continuity-browser.mjs
+node tests/continuity-ui.mjs
 npm --prefix apps/web ci
 npm --prefix apps/web run build
-npm --prefix apps/web run test:browser
 ./backend/mvnw -f backend/pom.xml verify
 ./backend/mvnw -f fetcher/pom.xml verify
-```
+~~~
 
-For native extension navigation, install the locked Playwright Chromium as described in the repository guide, then run `npm run test:browser`. This needs a runner that allows unpacked extensions; do not change a managed browser's policy to force it. The website contract suite uses mocked responses; it differs from the real stack browser suite run by the `stack-e2e` CI job.
+Native extension tests require the locked Playwright browser and a policy that permits unpacked extensions; do not change a managed policy to force a pass. The regular UI contract uses mocked background responses and is labelled accordingly. The real browser chain tests exercise controlled sites, not current ownership of the public example.
 
-For deployment-role and recovery checks, use [deployment instructions](DEPLOYMENT.md), [discovery instructions](DISCOVERY.md), [worker database instructions](DISCOVERY_DATABASE.md) and the [encrypted recovery drill](BACKUP_RESTORE_DRILL.md). Enabling a worker requires a deliberately provisioned fetcher network and identities. Default local API behavior leaves discovery disabled.
-
-The accurate current project claim is: **an implemented and testable reviewed-continuity workflow with signed distribution, local navigation safeguards and bounded candidate-only redirect observation.** Broad dead-link discovery, owner enrollment/recovery, temporal graph inference, demonstrated comparative novelty and production release remain separate work.
+The accurate project claim is: **source-only browser continuity discovery with explicit successor signals, bounded local linked memory, selected-site automatic rechecking, and a separate reviewed signed-registry lane.** General web search, universal dead-domain recovery, complete owner enrollment/rotation, full temporal identity inference, comparative scientific novelty and production release remain distinct work.

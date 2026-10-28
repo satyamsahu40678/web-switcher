@@ -1,9 +1,13 @@
 import {ALLOW_TEST_ORIGINS, TRUSTED_REGISTRY_KEYS, REGISTRY_URL} from './build-config.js';
-import {compileRules, createMapping, permissionFor, validateConfig, loopDetected, importSettings, pruneReceipts, confirmationMatches, MAX_LOCAL_MAPPINGS} from './core.js';
+import {compileRules, createMapping, permissionFor, validateConfig, loopDetected, importSettings, pruneReceipts, confirmationMatches, MAX_LOCAL_MAPPINGS, originOf} from './core.js';
 import {combineConfig, resolveWithCatalog} from './catalog-adapter.js';
 import {verifyCatalog, parseStrictJson} from './security/catalog.mjs';
+import {createContinuityController} from './continuity-worker.js';
 
 const options = {allowTestOrigins: ALLOW_TEST_ORIGINS};
+const continuity = createContinuityController({chromeApi: chrome, allowTestOrigins: ALLOW_TEST_ORIGINS, isReserved: async origin => {
+  const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);
+}});
 const empty = () => ({schemaVersion: 1, generation: crypto.randomUUID(), paused: false, mappings: []});
 let queue = Promise.resolve();
 function serial(work) { const task = queue.then(work); queue = task.catch(() => {}); return task; }
@@ -26,6 +30,32 @@ async function routingState(local) {
   const registry = await currentCatalog();
   return {config: combineConfig(local, registry.catalog, options), ...registry};
 }
+async function continuityReservations(catalogOverride) {
+  const saved = await chrome.storage.local.get(['catalogContinuityOrigins', 'catalogContinuityBlocked', 'catalogRecord', 'catalogHighwater']);
+  let blockedAll = saved.catalogContinuityBlocked === true;
+  const origins = new Set();
+  if (saved.catalogContinuityOrigins !== undefined) {
+    if (!Array.isArray(saved.catalogContinuityOrigins) || saved.catalogContinuityOrigins.length > 2000) blockedAll = true;
+    else for (const origin of saved.catalogContinuityOrigins) {
+      try { if (originOf(origin, options) !== origin) throw new Error(); origins.add(origin); } catch { blockedAll = true; }
+    }
+  }
+  if (saved.catalogRecord) {
+    try {
+      // A past acceptance time is used only to INHIBIT a weaker trust path.
+      // This never restores expired signed routing authority.
+      const acceptedAt = saved.catalogRecord.memory?.acceptedAt;
+      if (!Number.isSafeInteger(acceptedAt) || acceptedAt < 0) throw new Error();
+      const verified = await verifyCatalog(saved.catalogRecord.jws, {keys: TRUSTED_REGISTRY_KEYS, previous: saved.catalogHighwater || saved.catalogRecord.memory, now: acceptedAt});
+      for (const alias of verified.catalog.aliases) origins.add(alias.sourceOrigin);
+    } catch { blockedAll = true; }
+  } else if (saved.catalogHighwater && saved.catalogContinuityOrigins === undefined) blockedAll = true;
+  if (catalogOverride) for (const alias of catalogOverride.aliases) origins.add(alias.sourceOrigin);
+  if (origins.size > 2000) blockedAll = true;
+  const result = {origins: [...origins].slice(0, 2000), blockedAll};
+  if (!catalogOverride) await chrome.storage.local.set({catalogContinuityOrigins: result.origins, catalogContinuityBlocked: blockedAll});
+  return result;
+}
 async function grantedFor(config) {
   const granted = new Set();
   for (const mapping of config.mappings) if (await chrome.permissions.contains({origins: [permissionFor(mapping.sourceOrigin)]})) granted.add(mapping.sourceOrigin);
@@ -33,7 +63,8 @@ async function grantedFor(config) {
 }
 async function installRules(local, catalogOverride) {
   const config = catalogOverride === undefined ? (await routingState(local)).config : combineConfig(local, catalogOverride, options);
-  const rules = compileRules(config, chrome.runtime.getURL('route.html'), await grantedFor(config), Date.now(), options);
+  const reservations = await continuityReservations(catalogOverride);
+  const rules = [...compileRules(config, chrome.runtime.getURL('route.html'), await grantedFor(config), Date.now(), options), ...await continuity.rules(config, reservations)];
   for (const rule of rules) {
     const supported = await chrome.declarativeNetRequest.isRegexSupported({regex: rule.condition.regexFilter, requireCapturing: true});
     if (!supported.isSupported) throw new Error('This browser cannot compile the requested routing rule.');
@@ -131,13 +162,14 @@ async function acceptCatalog(jws) {
   const {catalogHighwater} = await chrome.storage.local.get('catalogHighwater');
   const record = await verifyCatalog(jws, {keys: TRUSTED_REGISTRY_KEYS, previous: catalogHighwater});
   const memory = {sequence: record.sequence, digest: record.digest, acceptedAt: record.acceptedAt};
+  const reservations = await continuityReservations(record.catalog);
   // Validate composition before writing. Local overrides win, conflicts fail closed.
   combineConfig(await readConfig(), record.catalog, options);
   const config = await readConfig(); config.generation = crypto.randomUUID();
   await chrome.storage.local.set({pendingConfig: config});
   try {
     await installRules(config, record.catalog);
-    await chrome.storage.local.set({config, catalogHighwater: memory, catalogRecord: {jws, memory}});
+    await chrome.storage.local.set({config, catalogHighwater: memory, catalogRecord: {jws, memory}, catalogContinuityOrigins: reservations.origins, catalogContinuityBlocked: reservations.blockedAll});
     await chrome.storage.local.remove('pendingConfig');
   } catch (error) {
     await installRules(await readConfig()).catch(() => {});
@@ -164,13 +196,18 @@ async function refreshCatalog() {
 async function handle(message, sender) {
   if (!message || typeof message.type !== 'string') throw new Error('Invalid message.');
   if (['resolve', 'confirmRoute'].includes(message.type) && fromPage(sender, '/route.html')) return resolve(message, sender);
+  if (['CONTINUITY_RESOLVE', 'CONTINUITY_CONFIRM'].includes(message.type) && fromPage(sender, '/continuity-gate.html')) return continuity.resolveGate(message, sender, {readConfig: async () => (await routingState(await readConfig())).config, recordSwitch});
   const settings = fromPage(sender, '/options.html');
   const popup = fromPage(sender, '/popup.html');
   if (!settings && !popup) throw new Error('This page cannot modify Web Switcher.');
   const current = await readConfig();
+  if (message.type === 'CONTINUITY_DISCOVER') return continuity.discover(message.sourceOrigin);
+  if (message.type === 'CONTINUITY_FOLLOW') return continuity.follow(message, () => installRules(current));
+  if (message.type === 'CONTINUITY_FORGET') return continuity.forget(message, () => installRules(current));
+  if (message.type === 'CONTINUITY_OPEN') return continuity.open(message);
   if (message.type === 'read') {
     const registry = await currentCatalog();
-    return {config: current, receipts: await receiptsNow(), grantedOrigins: [...await grantedFor((await routingState(current)).config)], registryConfigured: Object.keys(TRUSTED_REGISTRY_KEYS).length > 0, registryRefreshConfigured: Boolean(REGISTRY_URL), registry: registry.catalog ? {sequence: registry.sequence, expiresAt: registry.catalog.expiresAt, families: registry.catalog.families, aliases: registry.catalog.aliases.flatMap(alias => { const decision = registry.catalog.decisions.find(item => item.familyId === alias.familyId); return decision ? [{sourceOrigin: alias.sourceOrigin, familyId: alias.familyId, destinationOrigin: decision.destinationOrigin, trustClass: decision.trustClass, validUntil: decision.validUntil}] : []; })} : {error: registry.error}};
+    return {config: current, continuity: await continuity.read(), receipts: await receiptsNow(), grantedOrigins: [...await grantedFor((await routingState(current)).config)], registryConfigured: Object.keys(TRUSTED_REGISTRY_KEYS).length > 0, registryRefreshConfigured: Boolean(REGISTRY_URL), registry: registry.catalog ? {sequence: registry.sequence, expiresAt: registry.catalog.expiresAt, families: registry.catalog.families, aliases: registry.catalog.aliases.flatMap(alias => { const decision = registry.catalog.decisions.find(item => item.familyId === alias.familyId); return decision ? [{sourceOrigin: alias.sourceOrigin, familyId: alias.familyId, destinationOrigin: decision.destinationOrigin, trustClass: decision.trustClass, validUntil: decision.validUntil}] : []; })} : {error: registry.error}};
   }
   if (message.type === 'clearReceipts') { await chrome.storage.local.remove('receipts'); await chrome.storage.session.remove('receiptTabs'); return {ok: true}; }
   if (message.type === 'undo') return undo(message);
@@ -179,7 +216,7 @@ async function handle(message, sender) {
   if (message.type === 'REFRESH_CATALOG' && settings) return refreshCatalog();
   if (message.type === 'CLEAR_LOCAL_DATA' && settings) {
     await commitConfig(empty());
-    await chrome.storage.local.remove(['receipts', 'catalogRecord', 'catalogEtag', 'corruptConfig']);
+    await chrome.storage.local.remove(['receipts', 'catalogRecord', 'catalogEtag', 'corruptConfig', 'continuityState', 'corruptContinuity']);
     // Keep rollback highwater; clearing settings must not make old signatures new.
     await chrome.storage.session.clear();
     const rules = await chrome.declarativeNetRequest.getSessionRules();

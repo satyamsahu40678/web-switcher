@@ -31,6 +31,12 @@ public final class SafeFetcher {
     public record Result(String classification, int httpStatus, String finalOrigin,
                          List<Hop> hops, int bytes, String sha256, String checkedAt,
                          String identity, String threatStatus) {}
+    public record Continuation(String sourceOrigin, String destinationOrigin, String kind, int httpStatus) {}
+    public record Hint(String origin, String kind) {}
+    public record Resolution(String classification, int httpStatus, String finalOrigin,
+                             List<Hop> hops, List<Continuation> chain, List<Hint> hints,
+                             int bytes, String sha256, String checkedAt, String identity, String threatStatus) {}
+    private record Outcome(Result result, List<Continuation> chain, List<Hint> hints) {}
     @FunctionalInterface public interface Resolver { InetAddress[] resolve(String host) throws Exception; }
     @FunctionalInterface public interface Transport {
         Response get(URI url, InetAddress[] pinnedAddresses, int maxBytes, long deadlineNanos) throws Exception;
@@ -54,13 +60,27 @@ public final class SafeFetcher {
     }
 
     public Result probe(String input) throws ProbeFailure {
+        return execute(input, false).result;
+    }
+
+    /** Bounded explicit successor discovery. Callers must not promote observations into ownership. */
+    public Resolution resolve(String input) throws ProbeFailure {
+        Outcome outcome = execute(input, true);
+        Result result = outcome.result;
+        return new Resolution(result.classification, result.httpStatus, result.finalOrigin, result.hops,
+                outcome.chain, outcome.hints, result.bytes, result.sha256, result.checkedAt, result.identity, result.threatStatus);
+    }
+
+    private Outcome execute(String input, boolean followMetadata) throws ProbeFailure {
         URI current;
         try { current = PublicUrl.parse(input); } catch (IllegalArgumentException e) { throw new ProbeFailure(e.getMessage()); }
         if (!global.tryAcquire()) throw new ProbeFailure("CONCURRENCY_LIMIT");
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(followMetadata ? 30 : 15);
         Set<URI> seen = new HashSet<>();
         Map<String, String> robotsByOrigin = new HashMap<>();
         List<Hop> hops = new ArrayList<>();
+        List<Continuation> chain = new ArrayList<>();
+        List<Hint> hints = new ArrayList<>();
         try {
             for (int count = 0; count <= MAX_REDIRECTS; count++) {
                 checkDeadline(deadline);
@@ -84,21 +104,49 @@ public final class SafeFetcher {
                 if (Set.of(301, 302, 303, 307, 308).contains(response.status)) {
                     if (count == MAX_REDIRECTS) throw new ProbeFailure("REDIRECT_LIMIT");
                     if (response.location == null || response.location.length() > 2048) throw new ProbeFailure("INVALID_REDIRECT");
-                    try { current = PublicUrl.parse(current.resolve(response.location).toString()); }
+                    URI next;
+                    try { next = PublicUrl.parse(current.resolve(response.location).toString()); }
                     catch (IllegalArgumentException e) { throw new ProbeFailure("UNSAFE_REDIRECT"); }
+                    if (followMetadata) chain.add(new Continuation(origin, origin(next), "HTTP_REDIRECT", response.status));
+                    current = next;
                     continue;
+                }
+                if (followMetadata && response.status >= 200 && response.status < 300) {
+                    checkDeadline(deadline);
+                    var metadata = ContinuationMetadata.parse(current, response);
+                    checkDeadline(deadline);
+                    for (URI candidate : metadata.canonicalHints()) {
+                        if (hints.size() >= 4) break;
+                        // Returning a hint is not a network fetch or trust assertion; still reject
+                        // names whose current DNS answers expose an internal/metadata address.
+                        try {
+                            checkDeadline(deadline); resolvePublic(candidate.getHost()); checkDeadline(deadline);
+                            Hint hint = new Hint(origin(candidate), "CANONICAL_HINT");
+                            if (!hints.contains(hint)) hints.add(hint);
+                        } catch (ProbeFailure ignored) { checkDeadline(deadline); }
+                    }
+                    if (metadata.next() != null) {
+                        if (count == MAX_REDIRECTS) throw new ProbeFailure("REDIRECT_LIMIT");
+                        URI next = metadata.next().target();
+                        chain.add(new Continuation(origin, origin(next), metadata.next().kind(), response.status));
+                        current = next;
+                        continue;
+                    }
                 }
                 String classification = response.status == 403 || response.status == 429 ? "CHALLENGED_OR_THROTTLED"
                         : response.status >= 200 && response.status < 300 ? "REACHABLE" : "HTTP_ERROR";
-                return new Result(classification, response.status, origin, List.copyOf(hops), response.body.length,
+                Result result = new Result(classification, response.status, origin, List.copyOf(hops), response.body.length,
                         HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(response.body)),
                         Instant.now().toString(), "UNVERIFIED", "UNKNOWN");
+                return new Outcome(result, List.copyOf(chain), List.copyOf(hints));
             }
             throw new ProbeFailure("REDIRECT_LIMIT");
         } catch (ProbeFailure e) { throw e; }
         catch (Exception e) { throw new ProbeFailure("NETWORK_UNAVAILABLE"); }
         finally { global.release(); }
     }
+
+    private static String origin(URI url) { return "https://" + url.getHost(); }
 
     private InetAddress[] resolvePublic(String host) throws ProbeFailure {
         try { return AddressPolicy.requireAllPublic(resolver.resolve(host)); }

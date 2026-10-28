@@ -55,6 +55,67 @@ or malformed supported directives fail closed. User-agent matching, grouped
 rules, longest paths, `*` and terminal `$` are handled; percent-encoded robot
 rules are conservatively refused. No robots cache or paid search is used.
 
+## Explicit successor-chain resolution
+
+`POST /resolve` is a separate, authenticated internal endpoint with the same
+closed `{"url":"https://old.example.org/"}` request and 4096-byte request cap.
+It discovers successors from the old origin; callers do not provide a new
+destination. The older `/probe` contract and its HTTP-only redirect behavior are
+unchanged, so existing bounded discovery workers remain compatible.
+
+Resolution follows at most three transitions, sharing the limit across:
+
+- HTTP 301/302/303/307/308 Location redirects;
+- static HTML-head `meta http-equiv="refresh"` with an explicit URL and delay
+  of at most30 seconds (the resolver inspects the pointer without waiting);
+- HTML-head `link rel="web-switcher-successor" href="https://next.example.org/"`.
+  This is an experimental project convention, not a registered ownership proof.
+
+The resolver parses at most the existing bounded1MiB response with pinned jsoup
+1.23.2. It never runs page JavaScript or infers a successor from logos, names,
+ads, arbitrary links, comments, templates, noscript content or body metadata.
+Relative pointers respect a validated HTML base. HTTPS, standard-port,
+credential/query/fragment/path restrictions, DNS/all-address/socket validation,
+TLS hostname checks, robots and per-host politeness apply anew at every hop.
+Different explicit targets cause `AMBIGUOUS_CONTINUATION`; cycles, unsafe
+metadata and hop/byte/time limits stop resolution rather than selecting a guess.
+There is no private-address exception or proxy workaround.
+
+The result adds `chain` entries with `sourceOrigin`, `destinationOrigin`, `kind`
+(`HTTP_REDIRECT`, `META_REFRESH`, `HTML_SUCCESSOR`) and `httpStatus`. `hops`
+retains the ordered observed origin/status sequence; neither list returns page
+paths or raw HTML. It also returns the final response classification, origin,
+digest, byte count and observation time. `identity` is always `UNVERIFIED` and
+`threatStatus` is always `UNKNOWN`: a compromised/re-registered old origin can
+publish an authentic-looking pointer too.
+
+HTML canonical links are returned only as bounded `CANONICAL_HINT` origins after
+their current DNS answers pass public-address validation. They are **never
+followed as successor edges**, never used as a fallback and never confer trust.
+At most four hints and32 relevant metadata elements are considered. Fetching
+ordinary JSON does not cause HTML-like strings to be interpreted as metadata.
+
+`/resolve` has a30-second total operation budget; `/probe` remains15seconds.
+The extra budget allows a healthy multi-origin chain to honor the five-second
+robots/page request spacing. The server response deadline accommodates this
+bounded operation; component bounds, concurrency and body caps remain unchanged.
+
+This service has no persistent history/database. A caller can retain observed
+successor edges and later start from a previously known successor when an old
+origin is dead, validating freshness and conflicts according to its own policy.
+The service cannot discover an unseen successor when all known origins are dead
+and no earlier pointer or independent record exists. It does not turn this
+internal observation endpoint into public registry publication or a deployed
+automatic browser-routing authority.
+
+New injected-transport and authenticated-loopback tests cover a mixed
+HTTP→meta-refresh→explicit-successor chain, canonical-only abstention, inert and
+script content, conflict/cycle/hop budgets, unsafe metadata and DNS answers,
+robots at a discovered successor, relative/base resolution, strict endpoint
+requests and compatibility with the original `/probe` response. These are
+controlled protocol/transport tests, not verification of any public example's
+current operator or public egress deployment.
+
 ## Egress deployment gate
 
 The HTTP client intentionally does not use inherited proxies. A normal CONNECT

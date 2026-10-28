@@ -88,6 +88,9 @@ jobs:
         run: |
           export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
           npm run test:browser
+          node tests/continuity-probe-browser.mjs
+          node tests/continuity-ui.mjs
+          node tests/continuity-browser.mjs
           npm --prefix apps/web run test:browser
       - name: Preserve current browser results
         if: always()
