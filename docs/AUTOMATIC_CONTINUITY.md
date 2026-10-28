@@ -16,6 +16,8 @@ On a later check the extension can skip a known hop with a qualifying DNS/connec
 
 If C disappears before anyone observes C→D, this chain cannot reveal D. There is no universal website identity/next-domain database encoded in an ordinary old URL. A first-time dead source with no remembered link and no separate trusted registry record remains unknown. The system never fills that gap by choosing a similar name or logo.
 
+An additional service could investigate public search indexes, archives, migration announcements and independent references without requiring local history. That next increment is specified in the [Internet discovery plan](INTERNET_DISCOVERY_PLAN.md), [idea register](INTERNET_DISCOVERY_IDEAS.md), [backlog](INTERNET_DISCOVERY_BACKLOG.md) and [evaluation plan](INTERNET_DISCOVERY_EVALUATION.md). Those are proposals; the installed extension does not yet perform that broader Internet search.
+
 Normal browsers already follow live HTTP redirects. The extension's additional value is inspecting supported non-executing metadata, explaining the chain, retaining selected continuity history, and reusing known successors after earlier hosts stop resolving.
 
 ## Use it in your browser

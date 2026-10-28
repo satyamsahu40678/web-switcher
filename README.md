@@ -8,6 +8,8 @@ There is no universal “latest domain” field in a URL. If the last known site
 
 Start with [automatic continuity: how it works and how to use it](docs/AUTOMATIC_CONTINUITY.md). For installation and Store submission, use [the complete Chrome guide](docs/CHROME_INSTALL_AND_STORE.md).
 
+The next increment is planned in [autonomous Internet discovery](docs/INTERNET_DISCOVERY_PLAN.md): finding replacement candidates from public sources even on a first installation with no local history. Its [idea register](docs/INTERNET_DISCOVERY_IDEAS.md), [36-task implementation backlog](docs/INTERNET_DISCOVERY_BACKLOG.md), and [evaluation/threat plan](docs/INTERNET_DISCOVERY_EVALUATION.md) cover alternatives, delivery and evidence. This online search layer is **planned, not implemented**.
+
 ## Find and follow a website
 
 1. Install the unpacked extension or a reviewed Store build and open **Find current address** from its popup.
@@ -100,6 +102,10 @@ Current test outcomes belong to the exact revisions in [the evidence ledger](doc
 ## Further documentation
 
 - [Automatic continuity and linked-successor memory](docs/AUTOMATIC_CONTINUITY.md)
+- [Autonomous Internet discovery plan](docs/INTERNET_DISCOVERY_PLAN.md)
+- [Internet discovery idea register](docs/INTERNET_DISCOVERY_IDEAS.md)
+- [Internet discovery implementation backlog](docs/INTERNET_DISCOVERY_BACKLOG.md)
+- [Internet discovery evaluation and threats](docs/INTERNET_DISCOVERY_EVALUATION.md)
 - [Chrome installation and Store publishing](docs/CHROME_INSTALL_AND_STORE.md)
 - [Architecture and trust boundaries](docs/ARCHITECTURE.md)
 - [API contract](docs/API.md)

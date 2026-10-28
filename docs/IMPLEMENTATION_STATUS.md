@@ -12,6 +12,8 @@ Current local checks: **152 JavaScript tests passed** (zero failures/skips), inc
 
 ## Recovery and current scope
 
+The next autonomous Internet-discovery increment has a [detailed design](INTERNET_DISCOVERY_PLAN.md), [idea register](INTERNET_DISCOVERY_IDEAS.md), [36-task backlog](INTERNET_DISCOVERY_BACKLOG.md) and [evaluation/threat plan](INTERNET_DISCOVERY_EVALUATION.md). This is completed planning documentation, **not a completed web-search feature**. Public search/archive adapters, their candidate-result API and first-use dead-source Internet recovery remain unimplemented. No new runtime test or live-provider result is claimed by the planning documents.
+
 The uploaded prototype handoff was checksum-verified and its source restored onto the README-only repository baseline `075bc000eaf203f912c4e610b3f7fbc7746681e9`. The larger implementation described in the recovery checkpoint was unavailable and has been reconstructed rather than represented as recovered source.
 
 The delivered development scope is an automatic successor-discovery extension plus a runnable reviewed registry: packaged gate and settings, strict signed-record verification, Java API/review/publish workflow, React public/admin interface, isolated bounded fetcher and opt-in candidate-only discovery worker. The full multi-stage research plan is not complete merely because these modules exist. [All 134 original task IDs](PLAN_TRACEABILITY.md) are reconciled against current scope; [novelty and evidence](NOVELTY_AND_EVIDENCE.md) explains the proposed contribution, prior art and research claims still requiring evaluation.

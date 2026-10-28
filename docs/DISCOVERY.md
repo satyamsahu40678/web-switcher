@@ -4,6 +4,8 @@ The optional discovery pipeline queues an explicit hostname lookup, asks the sep
 
 The existing local extension and reviewed registry continue to work with discovery disabled. Production deployment of the discovery worker/fetcher is deliberately not part of the default public staging topology.
 
+The proposed [autonomous Internet discovery increment](INTERNET_DISCOVERY_PLAN.md) adds search/archive candidate generation for first-time dead sources. Its [backlog](INTERNET_DISCOVERY_BACKLOG.md) preserves this implemented `/v1` contract and requires a new versioned candidate API, phase-leased jobs and explicit budget enforcement. It is not already provided by enabling the worker described below.
+
 ## Configuration and process boundaries
 
 The public API accepts queued discovery only with `DISCOVERY_QUEUE_ENABLED=true`. Its normal keyless `APP_ROLE=api` process does not instantiate a fetcher client or require a fetcher token. When disabled (the default), existing unknown lookups return `status: unknown` immediately. Enable the queue only after its worker and isolated fetcher are configured; a pending reference does not assert that a worker is available or that a replacement exists.
