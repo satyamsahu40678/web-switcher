@@ -8,6 +8,7 @@ assert.equal(manifest.host_permissions, undefined, 'Production must not start wi
 assert.equal(manifest.content_scripts, undefined);
 assert.equal(manifest.externally_connectable, undefined);
 assert.match(await readFile('extension/build-config.js', 'utf8'), /export const ALLOW_TEST_ORIGINS = false;/);
+assert.match(await readFile('extension/build-config.js', 'utf8'), /export const INTERNET_PROVIDER_FIXTURES = null;/, 'Never distribute provider fixtures.');
 for (const name of await readdir('extension')) {
   if (name.endsWith('.js')) {
     const result = spawnSync(process.execPath, ['--check', `extension/${name}`], {stdio: 'inherit'});

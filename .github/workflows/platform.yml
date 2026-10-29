@@ -71,6 +71,26 @@ jobs:
           path: |
             backend/target/surefire-reports/
             fetcher/target/surefire-reports/
+  internet-service:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Build the separate Internet discovery image
+        run: docker build -f online-discovery/Dockerfile -t web-switcher-internet:test .
+      - name: Verify final-image authentication, persistence and unavailable behavior without egress
+        run: node tests/internet-container.mjs
+      - name: Preserve discovery image acceptance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: internet-discovery-image-results
+          retention-days: 14
+          if-no-files-found: warn
+          path: test-results/internet-container.json
   browser:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -89,7 +109,7 @@ jobs:
           export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
           failed=0
           npm run test:browser || failed=1
-          for suite in tests/continuity-probe-browser.mjs tests/continuity-ui.mjs tests/continuity-browser.mjs; do
+          for suite in tests/continuity-probe-browser.mjs tests/continuity-ui.mjs tests/continuity-browser.mjs tests/internet-ui.mjs tests/internet-browser.mjs; do
             node "$suite" || failed=1
           done
           npm --prefix apps/web run test:browser || failed=1

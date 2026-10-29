@@ -1,13 +1,26 @@
-import {ALLOW_TEST_ORIGINS, TRUSTED_REGISTRY_KEYS, REGISTRY_URL} from './build-config.js';
+import {ALLOW_TEST_ORIGINS, TRUSTED_REGISTRY_KEYS, REGISTRY_URL, INTERNET_PROVIDER_FIXTURES} from './build-config.js';
 import {compileRules, createMapping, permissionFor, validateConfig, loopDetected, importSettings, pruneReceipts, confirmationMatches, MAX_LOCAL_MAPPINGS, originOf} from './core.js';
 import {combineConfig, resolveWithCatalog} from './catalog-adapter.js';
 import {verifyCatalog, parseStrictJson} from './security/catalog.mjs';
 import {createContinuityController} from './continuity-worker.js';
+import {createInternetController} from './internet-worker.js';
 
 const options = {allowTestOrigins: ALLOW_TEST_ORIGINS};
 const continuity = createContinuityController({chromeApi: chrome, allowTestOrigins: ALLOW_TEST_ORIGINS, isReserved: async origin => {
   const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);
 }});
+const internet = createInternetController({chromeApi: chrome, continuity, allowTestOrigins: ALLOW_TEST_ORIGINS, providerUrls: ALLOW_TEST_ORIGINS ? INTERNET_PROVIDER_FIXTURES || undefined : undefined,
+  isReserved: async origin => {const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);},
+  readConfig,
+  saveChoice: async (input, {validate}) => {
+    await validate();
+    const config = await readConfig();
+    if (config.mappings.length >= MAX_LOCAL_MAPPINGS || config.mappings.some(mapping => mapping.sourceOrigin === input.sourceOrigin)) throw new Error('Remove the existing override for this source before remembering another choice.');
+    if (!await chrome.permissions.contains({origins: [permissionFor(input.sourceOrigin)]})) throw new Error('Source access was revoked.');
+    const next = {...config, generation: crypto.randomUUID(), mappings: [...config.mappings, createMapping(input, Date.now(), crypto.randomUUID(), options)]};
+    await commitConfig(next, validate);
+  }
+});
 const empty = () => ({schemaVersion: 1, generation: crypto.randomUUID(), paused: false, mappings: []});
 let queue = Promise.resolve();
 function serial(work) { const task = queue.then(work); queue = task.catch(() => {}); return task; }
@@ -72,11 +85,14 @@ async function installRules(local, catalogOverride) {
   const previous = await chrome.declarativeNetRequest.getDynamicRules();
   await chrome.declarativeNetRequest.updateDynamicRules({removeRuleIds: previous.map(rule => rule.id), addRules: rules});
 }
-async function commitConfig(next) {
+async function commitConfig(next, guard) {
   validateConfig(next, options);
+  await guard?.();
   await chrome.storage.local.set({pendingConfig: next});
   try {
+    await guard?.();
     await installRules(next);
+    await guard?.();
     await chrome.storage.local.set({config: next});
     await chrome.storage.local.remove('pendingConfig');
   } catch (error) {
@@ -98,6 +114,7 @@ async function reconcile() {
   await chrome.storage.local.remove('pendingConfig');
   await receiptsNow();
   await cleanBypasses();
+  await internet.maintenance();
 }
 function fromPage(sender, path) {
   if (sender.id !== chrome.runtime.id || !sender.url) return false;
@@ -201,6 +218,14 @@ async function handle(message, sender) {
   const popup = fromPage(sender, '/popup.html');
   if (!settings && !popup) throw new Error('This page cannot modify Web Switcher.');
   const current = await readConfig();
+  if (message.type === 'INTERNET_CONFIG_GET') return internet.configGet();
+  if (message.type === 'INTERNET_CONFIG_SET' && settings) return internet.configSet(message);
+  if (message.type === 'INTERNET_START') return internet.start(message);
+  if (message.type === 'INTERNET_STATUS') return internet.status(message);
+  if (message.type === 'INTERNET_CANCEL') return internet.cancel(message);
+  if (message.type === 'INTERNET_CHECK') return internet.check(message);
+  if (message.type === 'INTERNET_OPEN') return internet.open(message);
+  if (message.type === 'INTERNET_SAVE' && settings) return internet.save(message);
   if (message.type === 'CONTINUITY_DISCOVER') return continuity.discover(message.sourceOrigin);
   if (message.type === 'CONTINUITY_FOLLOW') return continuity.follow(message, () => installRules(current));
   if (message.type === 'CONTINUITY_FORGET') return continuity.forget(message, () => installRules(current));
@@ -215,6 +240,7 @@ async function handle(message, sender) {
   if (message.type === 'importCatalog' && settings) return acceptCatalog(message.jws);
   if (message.type === 'REFRESH_CATALOG' && settings) return refreshCatalog();
   if (message.type === 'CLEAR_LOCAL_DATA' && settings) {
+    await internet.clear();
     await commitConfig(empty());
     await chrome.storage.local.remove(['receipts', 'catalogRecord', 'catalogEtag', 'corruptConfig', 'continuityState', 'corruptContinuity']);
     // Keep rollback highwater; clearing settings must not make old signatures new.
@@ -244,7 +270,13 @@ async function handle(message, sender) {
   } else throw new Error('Unsupported request.');
   await commitConfig(next); return {ok: true};
 }
-chrome.runtime.onMessage.addListener((message, sender, respond) => { serial(() => handle(message, sender)).then(data => respond({ok: true, data}), error => respond({ok: false, error: error.message})); return true; });
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  // Long explicit candidate checks must not prevent cancellation, clearing or a
+  // source/settings change. Store mutations and final routing are revalidated.
+  const parallel = ['INTERNET_STATUS', 'INTERNET_CANCEL', 'INTERNET_CHECK', 'INTERNET_OPEN'].includes(message?.type);
+  const work = parallel ? handle(message, sender) : serial(() => handle(message, sender));
+  work.then(data => respond({ok: true, data}), error => respond({ok: false, error: error.message})); return true;
+});
 chrome.runtime.onInstalled.addListener(() => serial(async () => { await reconcile(); await chrome.alarms.create('maintenance', {periodInMinutes: 60}); }).catch(console.error));
 chrome.runtime.onStartup.addListener(() => serial(reconcile).catch(console.error));
 chrome.permissions.onRemoved.addListener(() => serial(reconcile).catch(console.error));

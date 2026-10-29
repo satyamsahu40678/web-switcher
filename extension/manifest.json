@@ -3,7 +3,7 @@
   "name": "Web Switcher",
   "version": "0.2.0",
   "minimum_chrome_version": "120",
-  "description": "Follow website moves with local controls, expiring mappings, and signed registry verification.",
+  "description": "Find changed website addresses using live signals, public archives and optional web search, with local controls.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

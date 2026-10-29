@@ -16,7 +16,7 @@ if (process.env.WS_REGISTRY_KEYS_FILE || process.env.WS_REGISTRY_URL) {
   }
   const url = new URL(process.env.WS_REGISTRY_URL);
   assert(url.protocol === 'https:' && !url.username && !url.password && !url.port && !url.hash && !url.search, 'Registry must use a fixed HTTPS endpoint.');
-  await writeFile('dist/web-switcher/build-config.js', `export const ALLOW_TEST_ORIGINS = false;\nexport const TRUSTED_REGISTRY_KEYS = ${JSON.stringify(keys)};\nexport const REGISTRY_URL = ${JSON.stringify(url.href)};\n`);
+  await writeFile('dist/web-switcher/build-config.js', `export const ALLOW_TEST_ORIGINS = false;\nexport const TRUSTED_REGISTRY_KEYS = ${JSON.stringify(keys)};\nexport const REGISTRY_URL = ${JSON.stringify(url.href)};\nexport const INTERNET_PROVIDER_FIXTURES = null;\n`);
   const manifest = JSON.parse(await readFile('dist/web-switcher/manifest.json', 'utf8'));
   manifest.host_permissions = [url.origin + '/*'];
   await writeFile('dist/web-switcher/manifest.json', JSON.stringify(manifest, null, 2) + '\n');

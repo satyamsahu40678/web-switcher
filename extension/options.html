@@ -53,6 +53,37 @@
           <div id="continuity-followed" class="mapping-list"></div>
         </div>
       </section>
+      <section id="internet-discovery" class="card internet-discovery" aria-labelledby="internet-title">
+        <div class="section-number">01B / INVESTIGATE PUBLIC SOURCES</div>
+        <h2 id="internet-title">No known chain? Search beyond this device.</h2>
+        <p class="muted">Use the old website address above. Public archives can reveal earlier move announcements even when this browser has no history. An optional discovery service can also search the web. Suggestions remain unverified; inspect their evidence and check an address before choosing it.</p>
+        <p class="hint">Selected old origin: <strong id="internet-source-preview">Enter an old website address above.</strong></p>
+        <div class="internet-search-controls">
+          <div>
+            <label for="internet-mode">Public sources to investigate</label>
+            <select id="internet-mode"><option value="archives">Public archives · no account or server needed</option><option value="service">Configured Internet discovery service</option></select>
+          </div>
+          <p id="internet-disclosure" class="hint">Archive.org and the Wayback Machine receive the selected hostname and normal connection information. Your entered path, query and fragment are not sent. Public history may be incomplete or unavailable.</p>
+        </div>
+        <label class="check-label"><input id="internet-consent" type="checkbox"><span>I want the selected old hostname investigated by these public sources. This does not prove that a suggested website has the same owner or is safe.</span></label>
+        <div class="actions">
+          <button id="internet-start" class="primary" type="button" disabled>Search public sources</button>
+          <button id="internet-cancel" class="secondary" type="button" hidden>Cancel search</button>
+        </div>
+        <p id="internet-status" class="hint" role="status" aria-live="polite">No online investigation started. No replacement address or history file is required.</p>
+        <div id="internet-results" class="internet-results" aria-live="polite"></div>
+        <details class="internet-service-settings">
+          <summary>Optional discovery service</summary>
+          <p class="hint">Use a service you trust for broader web search. Its operator receives your selected hostname. Public archive investigation works without this setting. Service access is separate from website identity verification.</p>
+          <label for="internet-service-origin">Discovery service origin</label>
+          <input id="internet-service-origin" type="url" maxlength="512" autocomplete="off" spellcheck="false" placeholder="https://discovery.example.org">
+          <label for="internet-service-token">Service access token, if required</label>
+          <input id="internet-service-token" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="Stored only for this browser session">
+          <p id="internet-service-state" class="hint">No service configured.</p>
+          <button id="internet-config-save" class="secondary" type="button">Save service settings</button>
+          <p class="hint">The address is stored locally. An access token is not included in settings exports or read back into this form. Leave its field blank to keep a saved token; clear the service origin to remove the service configuration.</p>
+        </details>
+      </section>
       <div class="workspace">
         <section class="card setup" aria-labelledby="new-title">
           <div class="section-number">OPTIONAL / MANUAL OVERRIDE</div>

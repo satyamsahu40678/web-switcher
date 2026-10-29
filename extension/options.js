@@ -1,6 +1,7 @@
-import {ALLOW_TEST_ORIGINS} from './build-config.js';
+import {ALLOW_TEST_ORIGINS, INTERNET_PROVIDER_FIXTURES} from './build-config.js';
 import {createMapping, permissionFor} from './core.js';
 import {normalizeSource} from './continuity.js';
+import {initializeInternetUi} from './internet-ui.js';
 
 const form = document.querySelector('#mapping-form');
 const notice = document.querySelector('#notice');
@@ -9,6 +10,7 @@ let saving = false;
 let pendingImport;
 let continuityResult;
 let continuityBusy = false;
+let internetUi;
 function announce(text, isError = false) {
   notice.hidden = false;
   notice.textContent = text;
@@ -428,13 +430,14 @@ document.querySelector('#confirm-import').addEventListener('click', async event 
   finally { button.disabled = false; }
 });
 document.querySelector('#clear-local').addEventListener('click', async () => {
-  if (!confirm('Delete all local mappings, followed websites, continuity memory and routing activity? This cannot be undone. Export mapping settings first if you need them.')) return;
+  if (!confirm('Delete all local mappings, followed websites, continuity memory, online investigations, service settings and routing activity? This cannot be undone. Export mapping settings first if you need them.')) return;
+  internetUi?.clear();
   try {
     await request({type: 'CLEAR_LOCAL_DATA'});
     continuityResult = undefined;
     continuityPanel.hidden = true;
     await render();
-    announce('Local mappings, followed websites, continuity memory and routing activity deleted.');
+    announce('Local mappings, followed websites, continuity memory, online investigations, service settings and routing activity deleted.');
     continuityMessage('No local continuity memory remains.');
   }
   catch (error) { announce(error.message, true); }
@@ -450,6 +453,7 @@ if (source) {
   previewMapping();
 }
 render().catch(error => announce(error.message, true));
+internetUi = initializeInternetUi({request, refresh: render, allowTestOrigins: ALLOW_TEST_ORIGINS, providerUrls: INTERNET_PROVIDER_FIXTURES});
 
 async function importCatalog(text) {
   if (!snapshot?.registryConfigured) throw new Error('No registry key is configured in this development build.');
