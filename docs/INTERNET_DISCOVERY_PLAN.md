@@ -1,5 +1,7 @@
 # Autonomous Internet discovery: implementation plan
 
+**Implementation update, 29 October 2026:** A bounded archive-first extension and optional authenticated Node/SQLite search service are now implemented. Read [delivered scope](INTERNET_DISCOVERY_STATUS.md) and [operation/deployment](INTERNET_DISCOVERY_OPERATION.md) for current behavior. The design below remains the original broader proposal; its planned Java/V2 storage approach was simplified to a separate SQLite service, and its research/provider/owner features are not all delivered.
+
 Status: **proposed; no online-search implementation is delivered by this document**. Updated 28 October 2026 (Asia/Kolkata). This plan extends the [implemented browser continuity engine](AUTOMATIC_CONTINUITY.md) and the original [research plan, section 9](WEB_SWITCHER_PLAN.md#9-discovery-and-verification). It does not rewrite historical validation or authorize an unverified search result as a signed route.
 
 ## 1. Product outcome

@@ -77,6 +77,6 @@ export function validateInternetResult(raw, options = {}) {
   }
   if (raw.outcome === 'candidates' && !raw.candidates.length || raw.candidates.length && raw.outcome !== 'candidates') throw new Error('Discovery outcome contradicts its candidates.');
   if (raw.candidates.length && raw.status !== 'completed') throw new Error('Only a completed lookup can contain candidates.');
-  if (JSON.stringify(raw).length > 65536) throw new Error('Internet discovery response is too large.');
+  if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 65536) throw new Error('Internet discovery response is too large.');
   return structuredClone(raw);
 }

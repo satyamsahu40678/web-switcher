@@ -15,7 +15,7 @@ export function createInternetTransport(chromeApi, {allowTestOrigins = false, fe
       if (!['location', 'x-archive-orig-location', 'refresh', 'content-type'].includes(name)) continue;
       const value = header.value || '';
       if (value.length > 4096) { item.invalid = true; continue; }
-      if (item.headers[name] && item.headers[name] !== value) item.invalid = true;
+      if (Object.hasOwn(item.headers, name) && item.headers[name] !== value) item.invalid = true;
       item.headers[name] = value;
     }
     item.resolveHeaders();

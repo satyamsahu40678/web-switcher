@@ -68,6 +68,10 @@ test('candidate evidence has bounded structured dates, types, URLs and availabil
 });
 
 test('lifetimes and result envelopes reject contradictions, invalid states and unbounded evidence', () => {
+  const unicode = result();
+  unicode.candidates = Array.from({length: 10}, (_, index) => ({...structuredClone(unicode.candidates[0]), id: `candidate-${index}`, origin: `https://candidate${index}.example.net`, title: '界'.repeat(200), evidence: Array.from({length: 5}, () => ({...structuredClone(unicode.candidates[0].evidence[0]), summary: '界'.repeat(500)}))}));
+  assert.ok(JSON.stringify(unicode).length < 65536);
+  assert.throws(() => validateInternetResult(unicode), /too large/);
   for (const mutate of [
     value => {value.expiresAt = value.createdAt;},
     value => {value.expiresAt = value.createdAt + 86400001;},

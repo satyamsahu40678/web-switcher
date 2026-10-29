@@ -1,5 +1,7 @@
 # Internet discovery: evaluation, threats and release evidence
 
+**Implementation update, 29 October 2026:** Controlled engineering tests now cover the archive/search implementation; [the status matrix](INTERNET_DISCOVERY_STATUS.md) and [evidence ledger](IMPLEMENTATION_STATUS.md) record their scope. This evaluation proposal still reports no live migration dataset, calibrated recovery accuracy, consenting-user pilot or scientific novelty result.
+
 Planning document, 28 October 2026 (Asia/Kolkata). **The Internet search layer described here is proposed work. This document does not report new executed tests, a live website dataset, measured accuracy or a deployed service.** Current implementation results remain in [the validation ledger](IMPLEMENTATION_STATUS.md).
 
 Use this with the [implementation plan](INTERNET_DISCOVERY_PLAN.md) and [idea register](INTERNET_DISCOVERY_IDEAS.md). The existing [local chain](AUTOMATIC_CONTINUITY.md), [server candidate queue](DISCOVERY.md), [architecture](ARCHITECTURE.md) and [novelty report](NOVELTY_AND_EVIDENCE.md) define the starting boundaries.

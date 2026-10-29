@@ -1,5 +1,7 @@
 # Internet discovery idea register
 
+**Implementation update, 29 October 2026:** The archive/search candidate path is implemented as described in [current scope](INTERNET_DISCOVERY_STATUS.md). This register remains the catalogue of considered approaches; Recommended, Experiment and Later are dispositions rather than completion claims.
+
 Planning revision: 28 October 2026 (Asia/Kolkata). **This is a design register, not an implementation or provider-availability claim.** It complements the [Internet discovery plan](INTERNET_DISCOVERY_PLAN.md). The implemented browser baseline is described in [automatic continuity](AUTOMATIC_CONTINUITY.md); its executed evidence remains in [the implementation ledger](IMPLEMENTATION_STATUS.md).
 
 The target is: **given an old public HTTPS address, investigate public Internet evidence and find a plausible current successor without asking the user to supply the new address or a history file.** Discovery can be automatic while navigation authority remains separately controlled. A new search result does not inherit the authority of a signed registry decision or a previously pinned owner key.

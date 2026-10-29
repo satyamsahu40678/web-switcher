@@ -1,6 +1,8 @@
 # Internet discovery implementation backlog
 
-Planning revision: 28 October 2026 (Asia/Kolkata). **Every NET task below is proposed and unimplemented.** This document is an execution plan, not a record of completed provider integration or new passing tests.
+**Implementation update, 29 October 2026:** See [the task-to-delivery matrix](INTERNET_DISCOVERY_STATUS.md#backlog-interpretation) for current code and outstanding acceptance. The numbered definitions below preserve the original plan and dependencies; they are not a statement that every task is still wholly unimplemented or that all 36 are complete.
+
+Planning revision: 28 October 2026 (Asia/Kolkata). **NET task definitions describe proposed work and acceptance; consult the linked current status for delivery.** This document is an execution plan, not a record of completed provider integration or new passing tests.
 
 Read the [design plan](INTERNET_DISCOVERY_PLAN.md), [idea register](INTERNET_DISCOVERY_IDEAS.md), and [evaluation and threat plan](INTERNET_DISCOVERY_EVALUATION.md) together. The existing [implementation ledger](IMPLEMENTATION_STATUS.md) remains the source for what actually runs. The earlier [research plan](WEB_SWITCHER_PLAN.md) and [traceability matrix](PLAN_TRACEABILITY.md) retain their original IDs; NET IDs identify this concrete next increment rather than silently marking earlier work complete.
 

@@ -4,7 +4,7 @@ The optional discovery pipeline queues an explicit hostname lookup, asks the sep
 
 The existing local extension and reviewed registry continue to work with discovery disabled. Production deployment of the discovery worker/fetcher is deliberately not part of the default public staging topology.
 
-The proposed [autonomous Internet discovery increment](INTERNET_DISCOVERY_PLAN.md) adds search/archive candidate generation for first-time dead sources. Its [backlog](INTERNET_DISCOVERY_BACKLOG.md) preserves this implemented `/v1` contract and requires a new versioned candidate API, phase-leased jobs and explicit budget enforcement. It is not already provided by enabling the worker described below.
+The separate [Internet discovery service and browser archive mode](INTERNET_DISCOVERY_OPERATION.md) add first-use search/archive candidate generation. Their optional Node/SQLite `/v2/discoveries` API preserves this Java `/v1` contract; enabling the worker described below does not enable Internet search. The [scope matrix](INTERNET_DISCOVERY_STATUS.md) distinguishes delivered behavior from the wider roadmap.
 
 ## Configuration and process boundaries
 

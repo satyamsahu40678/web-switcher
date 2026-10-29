@@ -195,7 +195,9 @@ export class DiscoveryStore {
     return this.#transaction(() => {
       const at = this.#at(); this.#maintain(at); const row = this.#row(id);
       if (!row || row.owner !== owner) return null;
-      if (!terminal.has(row.status)) this.#end(row, at, 'cancelled', 'USER_CANCELLED');
+      // A caller can withdraw a completed suggestion too. Do not reintroduce
+      // that cached result on the next lookup; keep charged budgets intact.
+      if (row.status !== 'cancelled') this.#end(row, at, 'cancelled', 'USER_CANCELLED');
       return this.#job(this.#row(id));
     });
   }

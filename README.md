@@ -4,11 +4,13 @@
 
 Web Switcher follows available website-move declarations and remembers the successor chain locally. Enter the **old address only**: the extension can discover A → B → C from HTTP redirects, short refresh declarations and explicit successor metadata. After you choose to follow that site, future visits recheck the chain; a previously learned A → B link can remain useful when A stops resolving. You do not have to type C as a manual mapping.
 
-There is no universal “latest domain” field in a URL. If the last known site disappears without an observed successor, the extension reports unknown. It does not infer ownership from a matching name/logo, execute downloaded page scripts, or claim universal broken-link recovery. The observed destination is labelled **source declared**, not independently owner or registry verified.
+If direct signals and local memory run out, choose **Search public sources**. The extension investigates public archive indexes and historical move announcements even on a first installation with no saved history. An optional authenticated search service adds broader web search. Results are explained, unverified suggestions: check a candidate live before opening it, or explicitly remember a user-configured choice for 24 hours.
+
+There is no universal “latest domain” field in a URL. If available public evidence supplies no supported successor, the extension reports unknown or unavailable. It does not infer ownership from a matching name/logo or execute downloaded page scripts. Live declarations remain **source declared**; Internet suggestions remain **unverified candidates**, with no automatic trust upgrade.
 
 Start with [automatic continuity: how it works and how to use it](docs/AUTOMATIC_CONTINUITY.md). For installation and Store submission, use [the complete Chrome guide](docs/CHROME_INSTALL_AND_STORE.md).
 
-The next increment is planned in [autonomous Internet discovery](docs/INTERNET_DISCOVERY_PLAN.md): finding replacement candidates from public sources even on a first installation with no local history. Its [idea register](docs/INTERNET_DISCOVERY_IDEAS.md), [36-task implementation backlog](docs/INTERNET_DISCOVERY_BACKLOG.md), and [evaluation/threat plan](docs/INTERNET_DISCOVERY_EVALUATION.md) cover alternatives, delivery and evidence. This online search layer is **planned, not implemented**.
+Use the [Internet discovery operation guide](docs/INTERNET_DISCOVERY_OPERATION.md) for the working archive flow and optional search service. The [implementation status](docs/INTERNET_DISCOVERY_STATUS.md) distinguishes delivered code from the wider [design](docs/INTERNET_DISCOVERY_PLAN.md), [80 ideas](docs/INTERNET_DISCOVERY_IDEAS.md), [36-task backlog](docs/INTERNET_DISCOVERY_BACKLOG.md) and [evaluation plan](docs/INTERNET_DISCOVERY_EVALUATION.md). Real-provider availability and identity accuracy are separate from controlled engineering tests.
 
 ## Find and follow a website
 
@@ -17,14 +19,17 @@ The next increment is planned in [autonomous Internet discovery](docs/INTERNET_D
 3. Click **Find current address** and grant the selected source's access. By default, approve each newly discovered origin with **Allow next check**. The optional **Allow automatic checks across HTTPS domains** checkbox requests broader access once; it is off by default.
 4. Inspect the observed chain and choose **Open latest address**. The background checks again before opening it.
 5. To handle later moves on visits to that old source, explicitly consent and choose **Follow this website**. Its packaged gate checks available declarations and fresh remembered successors at use time.
+6. If the direct chain is unresolved, leave only the old address in the input, consent to online investigation and choose **Search public sources**. Default archive discovery needs no account, search key, history file or backend. Inspect each suggestion's historical evidence, choose **Check this address**, allow its origin if requested, then open the freshly checked homepage. **Remember this choice for 24 hours** is an explicit unverified override, not an ownership certificate.
 
-This extension flow needs **no account, Java backend, Docker deployment or registry server**. It contacts the selected website/successors from your browser without cookies or a referrer. A live unmoved source can continue on its original URL; cross-domain continuity opens the discovered homepage and does not forward the original query, fragment or private path. Sensitive original links require confirmation.
+The default extension flow needs **no account, Java backend, Docker deployment or registry server**. Direct checks contact selected websites; explicitly requested archive discovery also sends the selected origin to Archive.org/Web Archive. Requests omit cookies and referrers. A live unmoved source can continue on its original URL; cross-domain continuity opens the discovered homepage and does not forward the original query, fragment or private path. Sensitive original links require confirmation. Broader web search uses the optional separately deployed service and its provider credentials; it is not a preconfigured public service.
 
 Manual old→new mappings remain available as secondary explicit overrides. Signed reviewed registry decisions remain a separate, stronger provenance class. Existing manual/signed decisions take precedence for the same exact source. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion, including when reached through another source’s chain, so weaker discovery cannot silently replace that authority.
 
 ## Implemented components
 
 - **Automatic MV3 continuity:** source-only discovery, bounded explicit successor parsing, local seven-day edge memory, source-only followed-site enrollment, rechecking on selected-site visits, dead-known-hop recovery, conflict/cycle refusal and origin-only explanations.
+- **First-use Internet discovery:** keyless public archive availability/CDX/snapshot investigation, inert historical redirect/metadata/announcement extraction, explained candidates, cancellation, expiring local jobs and fresh browser checks. No local history or typed destination is required.
+- **Optional Internet search service:** separate dependency-free Node 24/SQLite service with a real Brave API adapter, shared archive adapter, authenticated owner-scoped jobs, durable phase leases/quotas/bytes, cancellation, caching and coherent backups. Missing credentials or providers produce explicit partial/unavailable results. Search cannot publish a signed route.
 - **Local control:** per-origin optional grants, optional broader HTTPS discovery consent, pause, forget, clear data, minimal receipts and bounded tab undo. No account or publisher telemetry is required.
 - **Manual mappings:** exact source/destination overrides, expiry, path policy, strict import/export and validation gate.
 - **Signed registry:** ES256, closed schemas, expiry, rollback/equivocation protection, reviewed public-path policies and family withdrawal. No production trust root is bundled.
@@ -38,7 +43,7 @@ This is the reconstructed **0.2.0 development platform**, not a public deploymen
 
 The [Chrome installation/Store guide](docs/CHROME_INSTALL_AND_STORE.md) includes a no-toolchain Actions-artifact download path, real reviewer instructions, Store assets, privacy-page hosting and updates.
 
-For an extension-only source build, use Node 24 LTS, npm and Python 3:
+For a source build, use Node 24.5 or newer in the Node 24 LTS line, npm and Python 3:
 
 ~~~sh
 npm ci
@@ -85,6 +90,8 @@ npm run test:browser                   # current manual/signed native extension 
 node tests/continuity-probe-browser.mjs # real manual-redirect/header-capture proof
 node tests/continuity-browser.mjs       # source-only discovery and remembered-chain browser journey
 node tests/continuity-ui.mjs            # UI contract with mocked background, not native acceptance
+node tests/internet-browser.mjs         # native first-use archives and search-service connector
+node tests/internet-ui.mjs              # Internet candidate UI contract in Chromium
 npm --prefix apps/web run test:browser  # website UI contract; API mocked
 npm --prefix apps/web run test:e2e-browser # actual loopback UI/API/database
 npm run test:http                      # live Java/WebCrypto contract
@@ -102,6 +109,8 @@ Current test outcomes belong to the exact revisions in [the evidence ledger](doc
 ## Further documentation
 
 - [Automatic continuity and linked-successor memory](docs/AUTOMATIC_CONTINUITY.md)
+- [Internet discovery usage, provider setup and deployment](docs/INTERNET_DISCOVERY_OPERATION.md)
+- [Delivered Internet discovery scope and remaining roadmap](docs/INTERNET_DISCOVERY_STATUS.md)
 - [Autonomous Internet discovery plan](docs/INTERNET_DISCOVERY_PLAN.md)
 - [Internet discovery idea register](docs/INTERNET_DISCOVERY_IDEAS.md)
 - [Internet discovery implementation backlog](docs/INTERNET_DISCOVERY_BACKLOG.md)

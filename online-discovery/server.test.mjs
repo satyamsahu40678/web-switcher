@@ -133,6 +133,19 @@ test('completed caches and request reservations survive an actual service/databa
   assert.equal(f.store.get(owner(TOKEN), first.jobId).searchCalls, 1);
 });
 
+test('cancelling a completed result invalidates its cache while preserving spent quota', async t => {
+  const f = await fixture(t), start = await f.api('/v2/discoveries', {method: 'POST', body: {hostname: 'retired.journey.org'}});
+  const first = await f.terminal(start.data.jobId); assert.equal(first.candidates.length, 1);
+  const cancelled = await f.api('/v2/discoveries/' + first.jobId, {method: 'DELETE'});
+  assert.equal(cancelled.data.status, 'cancelled'); assert.deepEqual(cancelled.data.candidates, []);
+  assert.equal(f.store.get(owner(TOKEN), first.jobId).searchCalls, 1);
+  await f.restart();
+  assert.equal((await f.api('/v2/discoveries/' + first.jobId)).data.status, 'cancelled');
+  const repeated = await f.api('/v2/discoveries', {method: 'POST', body: {hostname: 'retired.journey.org'}});
+  assert.notEqual(repeated.data.jobId, first.jobId);
+  await f.terminal(repeated.data.jobId); assert.equal(f.calls.length, 2);
+});
+
 test('cancelled work cannot publish a late provider result, and uncertain paid calls stay charged', async t => {
   let release, entered;
   const pending = new Promise(resolve => {entered = resolve;});

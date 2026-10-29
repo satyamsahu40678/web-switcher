@@ -1,6 +1,16 @@
 # Implementation status and evidence
 
-Updated 28 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+Updated 29 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+
+## Internet-discovery implementation — 29 October 2026
+
+A first-time user can investigate an old address without local migration history or a supplied replacement. Archive availability/CDX/root snapshots produce explained unverified suggestions; current candidate checks/opening and optional 24-hour user-configured choices enforce permissions, exact displayed destination, cancellation/generation state and every-origin signed reservations. A separate authenticated service implements the actual Brave/archive adapters, versioned candidate API, durable SQLite leases/quotas/cache/retention and coherent backups. It cannot publish a registry route.
+
+Current local validation: **273 Node/JavaScript tests passed** with zero failures/skips, including **57 service tests** using actual HTTP/SQLite/orchestration and **eight provider-transport tests**. **Eight actual final-container checks passed** with egress disabled, covering non-root/read-only execution, authenticated API, honest unconfigured readiness, no invented result, restart persistence/cache and cancellation. Eight new mocked-Chromium UI checks and six existing continuity UI checks passed. Manifest/syntax/package checks passed.
+
+Hosted browser acceptance for source `ca2560883a705e0fe3bad9b1e8cf359017abc364` passed in both push and PR contexts: **60 native Chromium groups** (19 legacy, six transport, 18 continuity and 17 first-use Internet groups), plus the 14 extension UI contract checks. The initial final-image test exposed completed-result cancellation/cache semantics; that behavior is now corrected with a real HTTP/database regression and the local image test passes. Full exact-source CI evidence for the corrected revision is recorded when available below.
+
+Provider fixtures establish mechanics, not public-provider success or historical identity accuracy. The enforced cloud policy still lacks the archive/search hosts and no Brave key is configured; the saved environment draft is not applied access. The public example is unverified and no public service/Store listing has been deployed.
 
 ## Automatic continuity update
 
@@ -8,11 +18,11 @@ The primary extension flow now accepts only an old HTTPS address. It follows exp
 
 Declarations establish observed continuity, not ownership or safety. Unknown successors are not guessed. Conflicts, loops, expired history, access denials and TLS errors stop routing. Signed aliases retain a public trust barrier after expiry/revocation/removal, including when reached as an intermediate chain hop, so they cannot silently downgrade to source-declared continuity. Correlated response headers are awaited independently of the fetch promise to handle actual Chromium event ordering. Private URL parts never cross to the discovered domain.
 
-Current local checks: **152 JavaScript tests passed** (zero failures/skips), including 21 graph tests, 15 transport tests, 30 controller tests and 21 background tests. Six mocked-browser UI contract checks also passed. **83 fetcher Java tests passed** (65 existing plus 18 continuation cases). Manifest/syntax/package checks passed. Native automatic-flow acceptance passed for source `76585a0a4d08d5eb0bcbf403ed9e7335771aac6e` in both push and PR platform runs: all 18 automatic-continuity groups, six native transport checks, six mocked-browser UI contract checks and 19 legacy extension groups. The tests use controlled loopback fixtures and pregranted fixture permissions, not public-site ownership verification or native permission-dialog acceptance.
+Previous continuity baseline: **152 JavaScript tests passed** (zero failures/skips), including 21 graph tests, 15 transport tests, 30 controller tests and 21 background tests. Six mocked-browser UI contract checks also passed. **83 fetcher Java tests passed** (65 existing plus 18 continuation cases). Manifest/syntax/package checks passed. Native automatic-flow acceptance passed for source `76585a0a4d08d5eb0bcbf403ed9e7335771aac6e` in both push and PR platform runs: all 18 automatic-continuity groups, six native transport checks, six mocked-browser UI contract checks and 19 legacy extension groups. The tests use controlled loopback fixtures and pregranted fixture permissions, not public-site ownership verification or native permission-dialog acceptance.
 
 ## Recovery and current scope
 
-The next autonomous Internet-discovery increment has a [detailed design](INTERNET_DISCOVERY_PLAN.md), [idea register](INTERNET_DISCOVERY_IDEAS.md), [36-task backlog](INTERNET_DISCOVERY_BACKLOG.md) and [evaluation/threat plan](INTERNET_DISCOVERY_EVALUATION.md). This is completed planning documentation, **not a completed web-search feature**. Public search/archive adapters, their candidate-result API and first-use dead-source Internet recovery remain unimplemented. No new runtime test or live-provider result is claimed by the planning documents.
+The bounded Internet-discovery increment is implemented: keyless archive investigation in the extension and an optional separately authenticated Node/SQLite search service. See [delivered scope](INTERNET_DISCOVERY_STATUS.md), [operation/deployment](INTERNET_DISCOVERY_OPERATION.md), and [service documentation](../online-discovery/README.md). The wider design, 80-idea register, 36-task backlog and evaluation documents remain a research/delivery roadmap; general temporal identity inference, public pilots and stronger owner lifecycle are not claimed complete.
 
 The uploaded prototype handoff was checksum-verified and its source restored onto the README-only repository baseline `075bc000eaf203f912c4e610b3f7fbc7746681e9`. The larger implementation described in the recovery checkpoint was unavailable and has been reconstructed rather than represented as recovered source.
 
