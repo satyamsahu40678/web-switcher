@@ -1,0 +1,12 @@
+# Add to local.yml only when building in a managed cloud session.
+# CODEX_PROXY_CERT identifies the provided session CA file; values stay out of layers.
+services:
+  api:
+    build:
+      secrets: [proxy_ca]
+  web:
+    build:
+      secrets: [proxy_ca]
+secrets:
+  proxy_ca:
+    file: ${CODEX_PROXY_CERT:?The managed session CA file is required for this override}

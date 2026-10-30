@@ -1,0 +1,22 @@
+node_modules/
+dist/
+test-results/
+research/browser_gate_results.json
+research/redirect_lab_results.json
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+# Java outputs and local runtime state (including throwaway demo private keys)
+**/target/
+**/data/
+.cache/
+.env
+.env.*
+!.env.example
+*.pk8
+*.p12
+*.pfx
+*.pem
+*.key
+*.tsbuildinfo

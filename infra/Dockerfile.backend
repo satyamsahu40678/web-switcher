@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+# Build from the repository root. Production image digests must be pinned during release.
+FROM eclipse-temurin:21-jdk AS build
+WORKDIR /src
+COPY backend/pom.xml backend/mvnw ./backend/
+COPY backend/.mvn/ ./backend/.mvn/
+COPY backend/src/ ./backend/src/
+COPY infra/build/maven-package.sh ./infra/build/maven-package.sh
+RUN --mount=type=secret,id=proxy_ca --mount=type=cache,target=/root/.m2 ./infra/build/maven-package.sh
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+RUN groupadd --system webswitcher && useradd --system --gid webswitcher --home-dir /app webswitcher && mkdir /app/data && chown webswitcher:webswitcher /app/data
+COPY --from=build /src/backend/target/web-switcher-api-0.2.0.jar /app/api.jar
+USER webswitcher
+EXPOSE 8080
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=65.0", "-jar", "/app/api.jar"]

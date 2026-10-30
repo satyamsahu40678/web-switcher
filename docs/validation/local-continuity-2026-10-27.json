@@ -1,0 +1,163 @@
+{
+  "recordedAt": "2026-10-27T16:04:55.884842+00:00",
+  "scope": "Local pre-publication development validation; exact hosted revisions are recorded separately.",
+  "javascript": {
+    "tests": 84,
+    "failures": 0,
+    "skipped": 0
+  },
+  "backend": {
+    "tests": 42,
+    "h2": "passed",
+    "postgresql17": "passed",
+    "failures": 0,
+    "skipped": 0
+  },
+  "web": {
+    "typescriptProductionBuild": "passed",
+    "mockedBrowserContract": "passed",
+    "realContainerBrowserJourneyChecks": 8,
+    "liveHttpChecks": 11,
+    "catalogBytesAcrossApiRestart": "identical"
+  },
+  "hermeticBackupGuards": 9,
+  "deploymentGuards": 7,
+  "drills": {
+    "backup-restore-drill": {
+      "executedAt": "2026-10-27T15:47:29.789055+00:00",
+      "passedChecks": 11,
+      "checks": [
+        {
+          "name": "source dump identity is read-only and cannot alter signed releases",
+          "passed": true
+        },
+        {
+          "name": "real read-only pg_dump produces authenticated age ciphertext and matching SHA256",
+          "passed": true
+        },
+        {
+          "name": "failed real PostgreSQL producer leaves no backup or checksum artifact",
+          "passed": true
+        },
+        {
+          "name": "changed ciphertext is refused by checksum before restore writes",
+          "passed": true
+        },
+        {
+          "name": "incorrect age identity fails authentication without changing the target",
+          "passed": true
+        },
+        {
+          "name": "age authentication rejects tampering even with a recomputed file checksum",
+          "passed": true
+        },
+        {
+          "name": "clean restore preserves every application table, signed bytes, audit records and rollback counter",
+          "passed": true
+        },
+        {
+          "name": "restored signed catalog independently verifies in browser-compatible WebCrypto",
+          "passed": true
+        },
+        {
+          "name": "second restore refuses the nonempty target and preserves recovered data",
+          "passed": true
+        },
+        {
+          "name": "real Java API becomes ready and serves the recovered catalog verified with its original public anchor",
+          "passed": true
+        },
+        {
+          "name": "private plaintext restore scratch directories are removed after successful and failed decryptions",
+          "passed": true
+        }
+      ],
+      "versions": {
+        "postgres": "postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2)",
+        "age": "1.2.1"
+      },
+      "measurements": {
+        "encryptedBackupSeconds": 0.158,
+        "localRestoreSeconds": 0.206,
+        "restoredApiReadinessSeconds": 3.738,
+        "encryptedArchiveBytes": 14714,
+        "totalDrillSeconds": 17.942
+      },
+      "catalogSequence": 42,
+      "catalogDigest": "4560a355efff75211d35dbbb54f1fdc0ae0827743e8757ee7bcc936854c5b340",
+      "tableRowCounts": {
+        "site_family": 1,
+        "candidate": 1,
+        "pending_decision": 1,
+        "registry_release": 1,
+        "release_counter": 1,
+        "audit_event": 1,
+        "request_budget": 2,
+        "lookup_job": 1
+      },
+      "apiReadiness": "passed",
+      "limitations": [
+        "Disposable local databases and generated keys only; no production account or customer data.",
+        "Local elapsed times do not establish off-host backup durability, a production RPO/RTO, real-provider OIDC or production TLS.",
+        "This restores schema/data without database-owner grants; apply and verify intended role grants separately before promotion."
+      ]
+    },
+    "worker-grants": {
+      "checks": [
+        "opt-in owner bootstrap creates a non-inheriting restricted worker on verifiedV1",
+        "worker initializes exact API/discovery global rows without private IP data",
+        "budget RLS hides IP-hash rows and refuses arbitrary/public bucket insertion",
+        "normal durable claim SQL locks jobs/budgets and charges only probe buckets",
+        "dedupe and pending-candidate/audit completion leaves published catalog unchanged",
+        "worker reads only candidate dedupe columns, not report/review evidence",
+        "candidate guard and column grants prevent approvals/reviewer forgery or candidate mutation",
+        "worker cannot alter families, decisions, releases, sequence, schema or RLS",
+        "worker appends only its own discovery audit event types",
+        "worker cannot change public/queue budgets or bucket keys and prunes only aged host rows",
+        "existing API/publisher counter locking, updates and retention still work under RLS",
+        "separate reviewer/publisher SQL still publishes immutable releases",
+        "worker and default bootstrap reruns preserve counters/jobs and role boundaries",
+        "credential reuse and implicit worker password rotation refuse before breaking existing access",
+        "schema drift, privileged existing role and unexpected permissive RLS fail closed",
+        "real pg_dump refuses a SELECT-only non-bypassing backup role despite an explicit allow-all budget SELECT policy",
+        "dedicated non-superuser BYPASSRLS backup role retains SELECT-only SQL grants and dumps/restores every budget row without widening worker access",
+        "final API image starts the non-web restricted worker without Flyway/OIDC/signing credentials and completes a real internal fixture probe",
+        "real worker inserts only pending candidate and discovery audit while active families, signed release bytes and sequence remain unchanged"
+      ],
+      "passed": 19,
+      "workerImageTest": "passed",
+      "workerImage": "sha256:907b0668a8e0264653ce175b8986e1c4a04c6f8a5215a1b9408b7532c3e72e65",
+      "limitations": [
+        "Disposable PostgreSQL17 and controlled internal fetcher fixture only, not a production deployment or public fetch.",
+        "Worker compromise can affect its permitted queue/candidate workload; no compromise-proof or public-fetcher-egress claim."
+      ]
+    },
+    "catalog-concurrency": {
+      "executedAt": "2026-10-27T15:47:12.884Z",
+      "base": "http://127.0.0.1:18088",
+      "requests": 128,
+      "concurrency": 8,
+      "passed": 128,
+      "failures": [],
+      "statuses": {
+        "200": 64,
+        "304": 64
+      },
+      "sequence": 5,
+      "elapsedMs": 173,
+      "requestsPerSecond": 742,
+      "p50Ms": 9.1,
+      "p95Ms": 22.93,
+      "limitations": [
+        "Synthetic loopback fixture and bounded catalog/cache reads only.",
+        "No production capacity, regional availability, paid-provider quota or public deployment SLO claim."
+      ]
+    }
+  },
+  "limitations": [
+    "Synthetic loopback/internal fixtures, not public production deployment.",
+    "No full migration dataset, scientific novelty result, real owner enrollment or production signing-key recovery.",
+    "Native optional-permission dialogs, branded Chrome/Edge/store acceptance and deployed public-fetcher egress remain separate gates."
+  ],
+  "releaseEvidenceGateTests": 3
+}

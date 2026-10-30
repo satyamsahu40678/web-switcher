@@ -1,0 +1,13 @@
+spring:
+  main:
+    web-application-type: none
+  flyway:
+    # The protected owner bootstrap provisions schemaV1. A runtime worker must
+    # neither read migration history nor acquire schema-management privileges.
+    enabled: false
+web-switcher:
+  demo: false
+  runtime-role: worker
+  discovery:
+    queue-enabled: false
+    worker-enabled: true

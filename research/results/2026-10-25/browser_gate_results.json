@@ -1,0 +1,6 @@
+{
+  "executedAt": "2026-10-25T16:46:08.409Z",
+  "passedChecks": 0,
+  "checks": [],
+  "error": "Error: browserType.launchPersistentContext: Executable doesn't exist at /root/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome\n╔════════════════════════════════════════════════════════════╗\n║ Looks like Playwright was just installed or updated.       ║\n║ Please run the following command to download new browsers: ║\n║                                                            ║\n║     npx playwright install                                 ║\n║                                                            ║\n║ <3 Playwright Team                                         ║\n╚════════════════════════════════════════════════════════════╝"
+}

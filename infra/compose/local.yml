@@ -1,0 +1,41 @@
+# Synthetic demo only. The only published port binds to host loopback.
+# Run from repository root: docker compose -f infra/compose/local.yml up --build
+name: web-switcher-demo
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile.backend
+    command: ["--spring.profiles.active=demo", "--server.address=0.0.0.0"]
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=65.0
+    volumes:
+      - demo-data:/app/data
+    networks: [application]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    restart: unless-stopped
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile.web
+    ports: ["127.0.0.1:8088:8080"]
+    environment:
+      # Keep inherited Internet proxy routing; only this local service is direct.
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},api
+      no_proxy: ${no_proxy:-localhost,127.0.0.1},api
+    depends_on: [api]
+    networks: [ingress, application]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    restart: unless-stopped
+networks:
+  ingress: {}
+  application:
+    internal: true
+volumes:
+  demo-data: {}

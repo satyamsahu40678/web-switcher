@@ -1,0 +1,185 @@
+{
+  "recordedAt": "2026-10-29T04:08:20.033284+00:00",
+  "sourceCommit": "79f14f950a87676bb7b5edccda795a148ce8507d",
+  "result": "success",
+  "runs": [
+    {
+      "id": 40815485967,
+      "url": "https://github.com/satyamsahu40678/web-switcher/actions/runs/40815485967",
+      "sourceSha": "79f14f950a87676bb7b5edccda795a148ce8507d",
+      "event": "push",
+      "name": "Web Switcher platform",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 123255425275,
+          "name": "live-api",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:37Z",
+          "completed_at": "2026-10-29T04:03:08Z"
+        },
+        {
+          "id": 123255425355,
+          "name": "internet-service",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:37Z",
+          "completed_at": "2026-10-29T04:02:52Z"
+        },
+        {
+          "id": 123255425469,
+          "name": "postgres",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:36Z",
+          "completed_at": "2026-10-29T04:03:36Z"
+        },
+        {
+          "id": 123255425495,
+          "name": "java",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:36Z",
+          "completed_at": "2026-10-29T04:03:08Z"
+        },
+        {
+          "id": 123255425517,
+          "name": "stack-e2e",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:37Z",
+          "completed_at": "2026-10-29T04:04:58Z"
+        },
+        {
+          "id": 123255425561,
+          "name": "browser",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:37Z",
+          "completed_at": "2026-10-29T04:03:45Z"
+        },
+        {
+          "id": 123255425568,
+          "name": "javascript",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:36Z",
+          "completed_at": "2026-10-29T04:02:59Z"
+        }
+      ]
+    },
+    {
+      "id": 40815490138,
+      "url": "https://github.com/satyamsahu40678/web-switcher/actions/runs/40815490138",
+      "sourceSha": "79f14f950a87676bb7b5edccda795a148ce8507d",
+      "event": "pull_request",
+      "name": "Web Switcher platform",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 123255438670,
+          "name": "javascript",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:02:56Z"
+        },
+        {
+          "id": 123255438873,
+          "name": "internet-service",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:03:02Z"
+        },
+        {
+          "id": 123255438891,
+          "name": "java",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:03:06Z"
+        },
+        {
+          "id": 123255438961,
+          "name": "postgres",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:03:48Z"
+        },
+        {
+          "id": 123255438966,
+          "name": "browser",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:03:29Z"
+        },
+        {
+          "id": 123255439041,
+          "name": "stack-e2e",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:04:45Z"
+        },
+        {
+          "id": 123255439118,
+          "name": "live-api",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:03:07Z"
+        }
+      ]
+    },
+    {
+      "id": 40815490027,
+      "url": "https://github.com/satyamsahu40678/web-switcher/actions/runs/40815490027",
+      "sourceSha": "79f14f950a87676bb7b5edccda795a148ce8507d",
+      "event": "pull_request",
+      "name": "Routing prototype",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 123255438142,
+          "name": "validate",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-29T04:02:39Z",
+          "completed_at": "2026-10-29T04:03:25Z"
+        }
+      ]
+    }
+  ],
+  "testCounts": {
+    "nodeJavaScript": 273,
+    "onlineServiceIncludedInNodeTotal": 57,
+    "backendJava": 42,
+    "fetcherJava": 83,
+    "nativeLegacyExtensionGroups": 19,
+    "nativeTransportChecks": 6,
+    "nativeContinuityGroups": 18,
+    "nativeInternetDiscoveryGroups": 17,
+    "mockedContinuityUiChecks": 6,
+    "mockedInternetUiChecks": 8,
+    "internetFinalImageChecks": 8
+  },
+  "scope": [
+    "First-install old-address-only archive investigation with empty local history and no manual replacement.",
+    "Strict unverified suggestions, actual browser check/open and explicit24hour user-configured choice.",
+    "Native authenticated service connector plus actual NodeHTTP/SQLite/provider orchestration tests with controlled provider replies.",
+    "Durable owner isolation, spend/request/byte/deadline limits, leases/recovery/cancellation, snapshots and final nonroot/read-only image with egress disabled.",
+    "Existing Java/React/PostgreSQL/signature/role/backup/recovery platform and legacy routing continue to pass.",
+    "Direct push and PR merge contexts are separate; only successful direct-source push/dispatch qualifies as release source evidence."
+  ],
+  "limitations": [
+    "Provider replies are controlled fixtures; no current live Archive.org/WebArchive/Brave availability, public migration identity, accuracy, or content-safety claim.",
+    "Archive/search hosts are absent from enforced managed egress and no Brave key is configured; saved environment draft requires user review/save/publish.",
+    "The supplied public-domain example is unverified and not hardcoded.",
+    "Nativeoptional permission dialogs/Edgeacceptance, actualpublicHTTPSservicehosting, Storepublication and deploymentegress remain separate gates.",
+    "Wider temporalidentity/ownerbootstrap and research/effectiveness ideas remain documented roadmap work."
+  ]
+}

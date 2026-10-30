@@ -1,0 +1,162 @@
+{
+  "recordedAt": "2026-10-28T14:39:13.458752+00:00",
+  "sourceCommit": "76585a0a4d08d5eb0bcbf403ed9e7335771aac6e",
+  "result": "success",
+  "runs": [
+    {
+      "id": 40707449294,
+      "url": "https://github.com/satyamsahu40678/web-switcher/actions/runs/40707449294",
+      "sourceSha": "76585a0a4d08d5eb0bcbf403ed9e7335771aac6e",
+      "event": "push",
+      "name": "Web Switcher platform",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 122883269418,
+          "name": "stack-e2e",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:33Z",
+          "completed_at": "2026-10-28T14:38:12Z"
+        },
+        {
+          "id": 122883269909,
+          "name": "java",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:32Z",
+          "completed_at": "2026-10-28T14:36:10Z"
+        },
+        {
+          "id": 122883269946,
+          "name": "browser",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:33Z",
+          "completed_at": "2026-10-28T14:36:21Z"
+        },
+        {
+          "id": 122883270026,
+          "name": "javascript",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:32Z",
+          "completed_at": "2026-10-28T14:35:45Z"
+        },
+        {
+          "id": 122883270099,
+          "name": "live-api",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:33Z",
+          "completed_at": "2026-10-28T14:35:58Z"
+        },
+        {
+          "id": 122883270339,
+          "name": "postgres",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:32Z",
+          "completed_at": "2026-10-28T14:36:32Z"
+        }
+      ]
+    },
+    {
+      "id": 40707461724,
+      "url": "https://github.com/satyamsahu40678/web-switcher/actions/runs/40707461724",
+      "sourceSha": "76585a0a4d08d5eb0bcbf403ed9e7335771aac6e",
+      "event": "pull_request",
+      "name": "Web Switcher platform",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 122883313964,
+          "name": "live-api",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:35:59Z"
+        },
+        {
+          "id": 122883314235,
+          "name": "browser",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:36:19Z"
+        },
+        {
+          "id": 122883314349,
+          "name": "java",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:36:16Z"
+        },
+        {
+          "id": 122883314437,
+          "name": "postgres",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:36:36Z"
+        },
+        {
+          "id": 122883314460,
+          "name": "javascript",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:35:52Z"
+        },
+        {
+          "id": 122883314523,
+          "name": "stack-e2e",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:37:45Z"
+        }
+      ]
+    },
+    {
+      "id": 40707461717,
+      "url": "https://github.com/satyamsahu40678/web-switcher/actions/runs/40707461717",
+      "sourceSha": "76585a0a4d08d5eb0bcbf403ed9e7335771aac6e",
+      "event": "pull_request",
+      "name": "Routing prototype",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 122883312757,
+          "name": "validate",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-28T14:35:37Z",
+          "completed_at": "2026-10-28T14:36:32Z"
+        }
+      ]
+    }
+  ],
+  "testCounts": {
+    "javascript": 152,
+    "backendJava": 42,
+    "fetcherJava": 83,
+    "nativeLegacyExtensionGroups": 19,
+    "nativeTransportChecks": 6,
+    "nativeAutomaticContinuityGroups": 18,
+    "mockedBrowserContinuityUiChecks": 6
+  },
+  "scope": [
+    "Controlled native MV3 source-only discovery, opening and following without manual destination entry.",
+    "Observed A\u2192B\u2192C, then future C\u2192D and routing after A/B/C have all disappeared; persistence after restart.",
+    "Conflicts, loops, denied access, absent permission, sensitive-link confirmation, stale/forged gates, expiry and clear/forget.",
+    "Direct-source push and PR merge contexts are recorded separately. Only successful direct-source push/dispatch qualifies for release evidence."
+  ],
+  "limitations": [
+    "Loopback test hosts and pregranted fixture permissions; native optional permission dialogs and Edge acceptance are separate.",
+    "No verification of the supplied public-domain example, ownership, content safety or arbitrary website recovery accuracy.",
+    "Browser probes do not pin resolved DNS/socket IP; deployed server egress requires separate validation.",
+    "Public deployment and Chrome Web Store publication have not been performed."
+  ]
+}

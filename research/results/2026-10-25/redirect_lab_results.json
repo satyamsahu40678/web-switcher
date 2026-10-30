@@ -1,0 +1,269 @@
+{
+  "executed_at_utc": "2026-10-25T16:44:44.457150+00:00",
+  "python": "3.12.14",
+  "scope": "Loopback HTTP and P-256 cryptographic unit experiments",
+  "limitations": [
+    "No internet-wide dataset",
+    "No DNS/TLS simulation",
+    "No browser cache simulation",
+    "Ephemeral keys and origins",
+    "Toy DER signature envelope, not production JWS",
+    "Expected negative outcomes count as passed assertions, not successful recoveries"
+  ],
+  "passed_assertions": 19,
+  "results": [
+    {
+      "case": "H01_live_chain",
+      "expected": "reachable",
+      "observed": {
+        "outcome": "reachable",
+        "requests": 3,
+        "final": "http://127.0.0.1:45437/page",
+        "trace": [
+          {
+            "url": "http://127.0.0.1:39991/page",
+            "status": 301
+          },
+          {
+            "url": "http://127.0.0.1:41725/page",
+            "status": 308
+          },
+          {
+            "url": "http://127.0.0.1:45437/page",
+            "status": 200
+          }
+        ],
+        "body_sha256": "755f8ea25a5df0969a9021878adb1b3ab1c9fa1e9f2a0831e0834146be560dfb"
+      },
+      "assertion_passed": true,
+      "interpretation": "A -> B -> C takes three HTTP requests."
+    },
+    {
+      "case": "H02_dead_first_origin",
+      "expected": "unreachable",
+      "observed": {
+        "outcome": "unreachable",
+        "requests": 1,
+        "trace": [
+          {
+            "url": "http://127.0.0.1:39991/page",
+            "error": "ConnectionRefusedError"
+          }
+        ]
+      },
+      "assertion_passed": true,
+      "interpretation": "An ordinary redirect walker cannot read the next pointer from a dead origin."
+    },
+    {
+      "case": "H03_cached_next_pointer",
+      "expected": "reachable",
+      "observed": {
+        "outcome": "reachable",
+        "requests": 2,
+        "final": "http://127.0.0.1:45437/page",
+        "trace": [
+          {
+            "url": "http://127.0.0.1:41725/page",
+            "status": 308
+          },
+          {
+            "url": "http://127.0.0.1:45437/page",
+            "status": 200
+          }
+        ],
+        "body_sha256": "755f8ea25a5df0969a9021878adb1b3ab1c9fa1e9f2a0831e0834146be560dfb"
+      },
+      "assertion_passed": true,
+      "interpretation": "A previously learned A -> B pointer permits starting at B."
+    },
+    {
+      "case": "H04_dead_intermediate",
+      "expected": "unreachable",
+      "observed": {
+        "outcome": "unreachable",
+        "requests": 1,
+        "trace": [
+          {
+            "url": "http://127.0.0.1:41725/page",
+            "error": "ConnectionRefusedError"
+          }
+        ]
+      },
+      "assertion_passed": true,
+      "interpretation": "Knowing only the immediate next pointer fails when that intermediate dies."
+    },
+    {
+      "case": "H05_compressed_history",
+      "expected": "reachable",
+      "observed": {
+        "outcome": "reachable",
+        "requests": 1,
+        "final": "http://127.0.0.1:45437/page",
+        "trace": [
+          {
+            "url": "http://127.0.0.1:45437/page",
+            "status": 200
+          }
+        ],
+        "body_sha256": "755f8ea25a5df0969a9021878adb1b3ab1c9fa1e9f2a0831e0834146be560dfb"
+      },
+      "assertion_passed": true,
+      "interpretation": "Previously learned A -> C survives loss of A and B, while C is still live."
+    },
+    {
+      "case": "H06_live_tail_moves",
+      "expected": "reachable",
+      "observed": {
+        "outcome": "reachable",
+        "requests": 2,
+        "final": "http://127.0.0.1:44551/page",
+        "trace": [
+          {
+            "url": "http://127.0.0.1:45437/page",
+            "status": 301
+          },
+          {
+            "url": "http://127.0.0.1:44551/page",
+            "status": 200
+          }
+        ],
+        "body_sha256": "755f8ea25a5df0969a9021878adb1b3ab1c9fa1e9f2a0831e0834146be560dfb"
+      },
+      "assertion_passed": true,
+      "interpretation": "A cached terminal can reveal another move while the terminal still forwards."
+    },
+    {
+      "case": "H07_unobserved_tail_move",
+      "expected": "unreachable",
+      "observed": {
+        "outcome": "unreachable",
+        "requests": 1,
+        "trace": [
+          {
+            "url": "http://127.0.0.1:45437/page",
+            "error": "ConnectionRefusedError"
+          }
+        ]
+      },
+      "assertion_passed": true,
+      "interpretation": "A cached A -> C cannot discover D after C dies if C -> D was never learned."
+    },
+    {
+      "case": "S01_signed_update",
+      "expected": "accepted",
+      "observed": "accepted",
+      "assertion_passed": true,
+      "interpretation": "A pretrusted key can authenticate a separately obtained new pointer."
+    },
+    {
+      "case": "H08_registry_recovery",
+      "expected": "reachable",
+      "observed": {
+        "outcome": "reachable",
+        "requests": 1,
+        "final": "http://127.0.0.1:44551/page",
+        "trace": [
+          {
+            "url": "http://127.0.0.1:44551/page",
+            "status": 200
+          }
+        ],
+        "body_sha256": "755f8ea25a5df0969a9021878adb1b3ab1c9fa1e9f2a0831e0834146be560dfb"
+      },
+      "assertion_passed": true,
+      "interpretation": "The signed registry supplies D without contacting dead A, B or C."
+    },
+    {
+      "case": "S02_tamper",
+      "expected": "invalid_signature",
+      "observed": "invalid_signature",
+      "assertion_passed": true,
+      "interpretation": "Changing a signed destination invalidates its signature."
+    },
+    {
+      "case": "S03_wrong_key",
+      "expected": "invalid_signature",
+      "observed": "invalid_signature",
+      "assertion_passed": true,
+      "interpretation": "A lookalike cannot replace a previously pinned owner key."
+    },
+    {
+      "case": "S04_expired",
+      "expected": "expired",
+      "observed": "expired",
+      "assertion_passed": true,
+      "interpretation": "A valid signature does not make an expired pointer current."
+    },
+    {
+      "case": "S05_rollback",
+      "expected": "rollback",
+      "observed": "rollback",
+      "assertion_passed": true,
+      "interpretation": "Client sequence memory rejects older signed records."
+    },
+    {
+      "case": "S06_same_sequence_conflict",
+      "expected": "equivocation",
+      "observed": "equivocation",
+      "assertion_passed": true,
+      "interpretation": "Conflicting records at an observed sequence require refusal."
+    },
+    {
+      "case": "S07_revoked",
+      "expected": "revoked",
+      "observed": "revoked",
+      "assertion_passed": true,
+      "interpretation": "Locally known revocation overrides an otherwise valid signature."
+    },
+    {
+      "case": "S08_compromised_trusted_key",
+      "expected": "accepted",
+      "observed": "accepted",
+      "assertion_passed": true,
+      "interpretation": "LIMITATION: the signature alone cannot distinguish an attacker using the legitimate key."
+    },
+    {
+      "case": "I01_identical_clone",
+      "expected": "indistinguishable_by_content",
+      "observed": "indistinguishable_by_content",
+      "assertion_passed": true,
+      "interpretation": "Both unrelated origins return identical HTTP 200 bodies; content equality cannot prove identity."
+    },
+    {
+      "case": "H09_cycle",
+      "expected": "loop",
+      "observed": {
+        "outcome": "loop",
+        "requests": 2,
+        "trace": [
+          {
+            "url": "http://127.0.0.1:44551/page",
+            "status": 302
+          },
+          {
+            "url": "http://127.0.0.1:37631/page",
+            "status": 302
+          }
+        ]
+      },
+      "assertion_passed": true,
+      "interpretation": "Visited-URL detection terminates a redirect cycle."
+    },
+    {
+      "case": "H10_hop_bound",
+      "expected": "hop_limit",
+      "observed": {
+        "outcome": "hop_limit",
+        "requests": 1,
+        "trace": [
+          {
+            "url": "http://127.0.0.1:44551/page",
+            "status": 302
+          }
+        ]
+      },
+      "assertion_passed": true,
+      "interpretation": "A hard budget prevents unbounded work."
+    }
+  ]
+}
