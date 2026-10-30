@@ -9,9 +9,42 @@ const descriptions = {
   confirmation: 'This registry-reviewed move requires your confirmation. Check the destination below. Verification of a relationship is not a guarantee that a website is safe.',
   manual: 'This link may contain account information, a download, or an ambiguous path. You can choose the saved destination homepage without transferring the original path or parameters.',
   permission: 'Access to this source origin is no longer granted.',
-  loop: 'A recent switch in this tab was stopped to prevent a redirect loop. Check the destination before trying again.'
+  loop: 'This tab used this mapping recently. The destination may have sent you back, or you may have opened another old link. Automatic switching is paused to prevent a loop. If you intended another visit, check the saved address and open its homepage once.'
 };
 document.querySelector('#manage').addEventListener('click', () => chrome.runtime.openOptionsPage());
+function showPaused(result, envelope) {
+  document.querySelector('#title').textContent = 'Switch paused';
+  document.querySelector('#message').textContent = descriptions[result.reason] || descriptions.invalid;
+  document.body.dataset.reason = result.reason;
+  const button = document.querySelector('#homepage');
+  const preview = document.querySelector('#destination');
+  button.hidden = true;
+  button.onclick = null;
+  preview.hidden = true;
+  preview.textContent = '';
+  const retry = result.reason === 'loop' && typeof result.retryToken === 'string';
+  if (!result.homepage || (!retry && !['manual', 'confirmation'].includes(result.reason))) return;
+  preview.textContent = result.homepage;
+  preview.hidden = false;
+  button.textContent = retry ? 'Open destination homepage once' : result.reason === 'confirmation' ? 'Open reviewed destination' : 'Open destination homepage';
+  button.disabled = false;
+  button.hidden = false;
+  button.onclick = async () => {
+    button.disabled = true;
+    button.onclick = null;
+    try {
+      const checked = await chrome.runtime.sendMessage({type: retry ? 'retryRoute' : 'confirmRoute', envelope, expectedUrl: result.homepage, ...(retry ? {retryToken: result.retryToken} : {})});
+      if (!checked?.ok) throw new Error();
+      if (checked.data?.status === 'ready' && checked.data.url === result.homepage) location.replace(checked.data.url);
+      else if (checked.data?.reason === 'loop') showPaused(checked.data, envelope);
+      else throw new Error();
+    } catch {
+      button.hidden = true;
+      document.querySelector('#message').textContent = 'The destination, permission or policy changed, or this one-time action expired. Reopen the original link and review the current mapping.';
+      document.body.dataset.reason = 'changed';
+    }
+  };
+}
 try {
   const envelope = parseEnvelope(location.hash);
   // Remove raw URL data from this visible history entry before asynchronous work.
@@ -22,26 +55,7 @@ try {
   if (result.status === 'ready') {
     location.replace(result.url);
   } else {
-    document.querySelector('#title').textContent = 'Switch paused';
-    document.querySelector('#message').textContent = descriptions[result.reason] || descriptions.invalid;
-    document.body.dataset.reason = result.reason;
-    if (['manual', 'confirmation'].includes(result.reason) && result.homepage) {
-      const button = document.querySelector('#homepage');
-      button.hidden = false;
-      if (result.reason === 'confirmation') button.textContent = 'Open reviewed destination';
-      const preview = document.createElement('p'); preview.textContent = result.homepage; button.before(preview);
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        try {
-          const checked = await chrome.runtime.sendMessage({type: 'confirmRoute', envelope, expectedUrl: result.homepage});
-          if (!checked?.ok || checked.data?.status !== 'ready' || checked.data.url !== result.homepage) throw new Error();
-          location.replace(checked.data.url);
-        } catch {
-          document.querySelector('#message').textContent = 'The destination or policy changed. Reopen the original link and review the current mapping.';
-          document.body.dataset.reason = 'changed';
-        }
-      }, {once: true});
-    }
+    showPaused(result, envelope);
   }
 } catch {
   document.querySelector('#title').textContent = 'Unable to switch';

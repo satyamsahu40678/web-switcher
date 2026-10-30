@@ -63,6 +63,14 @@ The gate rejects forged/stale envelopes and reads current enrollment/configurati
 
 DNR interception covers only top-level GETs for selected granted origins. POSTs, iframes, subresources, unlisted hosts and suffix lookalikes are outside those rules. Manual or signed registry policy reserves its source ahead of the unverified continuity lane. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion; a corrupt/incomplete signed reservation history blocks the weaker lane rather than silently re-enabling it. This public security metadata inhibits unverified routing and does not restore expired signed authority.
 
+## Repeated mapping navigation and explicit recovery
+
+The manual/signed mapping gate (`route.html`) applies a 15-second session guard keyed by tab and local mapping, or by tab and signed website family. It blocks a destination returning to the same mapping or another alias of that family, including a different old path. Because the guard records attempts rather than proving navigation intent, a deliberate second visit in the same tab can also show **Switch paused**. The warning is evidence of a recent guarded attempt, not proof that the destination bounced.
+
+The loop screen can display the current policy's exact destination homepage and offer **Open destination homepage once**. Recovery requires an explicit click and a worker-issued one-use token bound to the gate document, mapping/family, source origin and destination homepage. The worker revalidates current mapping, source permission, configuration generation and expiry before consuming that choice and renewing the normal guard. Recovery strips the original path, query and fragment; it neither preserves a deep page nor upgrades a user-configured relationship's trust. A subsequent automatic bounce is still stopped, and no timed or automatic retry is introduced.
+
+The user should review the current destination if the warning returns immediately. Controlled browser cases cover a repeated deliberate navigation, homepage-only recovery, a destination returning to a different old path and a stale policy while the gate is open. Those cases do not establish the reported public domains' live behavior: this managed environment's egress policy does not permit those hosts. Installation and same-folder reload steps are in [the Chrome guide](CHROME_INSTALL_AND_STORE.md).
+
 ## Separate reviewed registry lane
 
 ~~~mermaid

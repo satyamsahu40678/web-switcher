@@ -37,7 +37,7 @@ Manual old→new mappings remain available as secondary explicit overrides. Sign
 - **Optional server observation:** isolated authenticated fetcher with HTTP/meta successor resolution, public-DNS/address/socket checks, HTTPS/robots/resource bounds; a separate keyless queue worker still submits unverified candidates for moderation. It is not required for the browser's local discovery.
 - **Experimental owner tools:** offline key generation and record signing/verification. Live enrollment, domain-control bootstrap and key recovery are not complete.
 
-This is the reconstructed **0.2.0 development platform**, not a public deployment or approved browser-store release. See [implementation evidence](docs/IMPLEMENTATION_STATUS.md), [all 134 original plan IDs](docs/PLAN_TRACEABILITY.md) and [novelty/prior-art limits](docs/NOVELTY_AND_EVIDENCE.md). The original [research plan](docs/WEB_SWITCHER_PLAN.md) remains a historical roadmap.
+This is the reconstructed development platform with extension version **0.2.1**, not a public deployment or approved browser-store release. See [implementation evidence](docs/IMPLEMENTATION_STATUS.md), [all 134 original plan IDs](docs/PLAN_TRACEABILITY.md) and [novelty/prior-art limits](docs/NOVELTY_AND_EVIDENCE.md). The original [research plan](docs/WEB_SWITCHER_PLAN.md) remains a historical roadmap.
 
 ## Install or build the extension
 
@@ -52,7 +52,7 @@ npm run check
 npm run package
 ~~~
 
-Load the resulting dist/web-switcher directory at chrome://extensions → Developer mode → Load unpacked. The ZIP is dist/web-switcher-0.2.0.zip; extract it before loading. The normal build has fixture mode disabled and no pregranted source access.
+Load the resulting dist/web-switcher directory at chrome://extensions → Developer mode → Load unpacked. The ZIP is dist/web-switcher-0.2.1.zip; extract it before loading. The normal build has fixture mode disabled and no pregranted source access. For an existing installation, follow the guide's same-folder update steps and click **Reload** at chrome://extensions. A recently used mapping can pause a deliberate repeat visit; its loop screen now offers **Open destination homepage once**, with automatic loop protection retained.
 
 A custom signed-registry build additionally needs both WS_REGISTRY_KEYS_FILE (a reviewed kid→public ES256 JWK map) and WS_REGISTRY_URL (an owned fixed HTTPS catalog endpoint) when packaging. Private signing material and demo roots never belong in a distributed extension. Local continuity works without that configuration.
 

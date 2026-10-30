@@ -121,18 +121,37 @@ function fromPage(sender, path) {
   try { const url = new URL(sender.url); return url.protocol === 'chrome-extension:' && url.host === chrome.runtime.id && url.pathname === path; }
   catch { return false; }
 }
-async function recordSwitch(result, sender) {
-  const {attempts = {}, receiptTabs = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs']);
+async function recordSwitch(result, sender, {issueRetry = false, retry = false, retryToken} = {}) {
+  const {attempts = {}, receiptTabs = {}, routeRetries = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries']);
   // Different retired aliases of one signed family share the same attempt.
   // Explicit local mappings retain their independent user-configured identity.
   const key = `${sender.tab.id}:${result.familyId ? `registry:${result.familyId}` : result.mappingId}`;
   const now = Date.now();
-  if (loopDetected(attempts[key], now)) return {status: 'blocked', reason: 'loop'};
+  const tabKey = String(sender.tab.id);
+  const pending = routeRetries[tabKey];
+  const homepage = result.destinationOrigin + '/';
+  const retries = Object.fromEntries(Object.entries(routeRetries).filter(([, value]) => value.expiresAt > now && value.expiresAt <= now + 120000));
+  if (retry) {
+    // A deliberate click may open only the current homepage. Its capability is
+    // single-use and bound to the exact gate document, tab and routing identity.
+    // A new automatic bounce still sees the renewed attempt below.
+    if (typeof retryToken !== 'string' || !pending || pending.token !== retryToken || !sender.documentId || pending.documentId !== sender.documentId || pending.key !== key || pending.sourceOrigin !== result.sourceOrigin || pending.homepage !== homepage || pending.expiresAt <= now || pending.expiresAt > now + 120000) return {status: 'blocked', reason: 'changed'};
+    delete retries[tabKey];
+    await chrome.storage.session.set({routeRetries: retries});
+  } else if (loopDetected(attempts[key], now)) {
+    if (!issueRetry || !sender.documentId) return {status: 'blocked', reason: 'loop'};
+    const token = crypto.randomUUID();
+    retries[tabKey] = {token, key, documentId: sender.documentId, sourceOrigin: result.sourceOrigin, homepage, expiresAt: now + 120000};
+    await chrome.storage.session.set({routeRetries: retries});
+    return {status: 'blocked', reason: 'loop', homepage, retryToken: token};
+  }
+  // Navigating through another gate invalidates an earlier gate's retry.
+  delete retries[tabKey];
   const pruned = Object.fromEntries(Object.entries(attempts).filter(([, at]) => now >= at && now - at < 15000));
   pruned[key] = now;
   const at = Math.max(now, ...(await receiptsNow()).map(receipt => receipt.at + 1));
   receiptTabs[String(at)] = {tabId: sender.tab.id, expectedUrl: result.url, expiresAt: now + 120000};
-  await chrome.storage.session.set({attempts: pruned, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.expiresAt > now))});
+  await chrome.storage.session.set({attempts: pruned, routeRetries: retries, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.expiresAt > now))});
   await chrome.storage.local.set({receipts: [{sourceOrigin: result.sourceOrigin, destinationOrigin: result.destinationOrigin, at}, ...await receiptsNow()].slice(0, 20)});
   return result;
 }
@@ -142,12 +161,17 @@ async function resolve(message, sender) {
   const result = resolveWithCatalog(config, message.envelope, Date.now(), catalog, options);
   if (!result.sourceOrigin) return result;
   if (!(await chrome.permissions.contains({origins: [permissionFor(result.sourceOrigin)]}))) return {status: 'blocked', reason: 'permission'};
+  if (message.type === 'retryRoute') {
+    const homepage = result.destinationOrigin + '/';
+    if (!(result.status === 'ready' || (result.status === 'blocked' && ['manual', 'confirmation'].includes(result.reason))) || message.expectedUrl !== homepage) return {status: 'blocked', reason: 'changed'};
+    return recordSwitch({...result, status: 'ready', url: homepage}, sender, {retry: true, retryToken: message.retryToken});
+  }
   if (message.type === 'confirmRoute') {
     // Recompute from current signed/local policy. Never trust the click's target.
     if (!confirmationMatches(result, message.expectedUrl)) return {status: 'blocked', reason: 'changed'};
-    return recordSwitch({...result, status: 'ready', url: result.homepage}, sender);
+    return recordSwitch({...result, status: 'ready', url: result.homepage}, sender, {issueRetry: true});
   }
-  return result.status === 'ready' ? recordSwitch(result, sender) : result;
+  return result.status === 'ready' ? recordSwitch(result, sender, {issueRetry: true}) : result;
 }
 async function cleanBypasses(tabId) {
   const {bypasses = {}} = await chrome.storage.session.get('bypasses');
@@ -212,7 +236,7 @@ async function refreshCatalog() {
 }
 async function handle(message, sender) {
   if (!message || typeof message.type !== 'string') throw new Error('Invalid message.');
-  if (['resolve', 'confirmRoute'].includes(message.type) && fromPage(sender, '/route.html')) return resolve(message, sender);
+  if (['resolve', 'confirmRoute', 'retryRoute'].includes(message.type) && fromPage(sender, '/route.html')) return resolve(message, sender);
   if (['CONTINUITY_RESOLVE', 'CONTINUITY_CONFIRM'].includes(message.type) && fromPage(sender, '/continuity-gate.html')) return continuity.resolveGate(message, sender, {readConfig: async () => (await routingState(await readConfig())).config, recordSwitch});
   const settings = fromPage(sender, '/options.html');
   const popup = fromPage(sender, '/popup.html');
@@ -285,6 +309,7 @@ chrome.alarms.onAlarm.addListener(alarm => serial(async () => { await reconcile(
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => { if (changeInfo.status === 'complete') serial(() => cleanBypasses(tabId)).catch(console.error); });
 chrome.tabs.onRemoved.addListener(tabId => serial(async () => {
   await cleanBypasses(tabId);
-  const {attempts = {}, receiptTabs = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs']);
-  await chrome.storage.session.set({attempts: Object.fromEntries(Object.entries(attempts).filter(([key]) => !key.startsWith(`${tabId}:`))), receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.tabId !== tabId))});
+  const {attempts = {}, receiptTabs = {}, routeRetries = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries']);
+  delete routeRetries[String(tabId)];
+  await chrome.storage.session.set({attempts: Object.fromEntries(Object.entries(attempts).filter(([key]) => !key.startsWith(`${tabId}:`))), routeRetries, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.tabId !== tabId))});
 }).catch(console.error));
