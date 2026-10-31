@@ -1,6 +1,6 @@
 # API contract
 
-The Java API uses `/v1` and same-origin browser sessions. `backend/src/main/java/dev/webswitcher/api/Api.java` is the executable request contract. This document describes the implemented subset of the larger research plan, including the optional bounded discovery queue. Owner enrollment and general search discovery remain unimplemented.
+The Java API uses `/v1` and same-origin browser sessions. `backend/src/main/java/dev/webswitcher/api/Api.java` is the executable request contract. This document describes the implemented subset of the larger research plan, including the optional bounded discovery queue. Owner enrollment and general search discovery are not supplied by these Java routes. Broader search is implemented separately by the optional [Node/SQLite `/v2/discoveries` service](../online-discovery/README.md).
 
 ## Public endpoints
 

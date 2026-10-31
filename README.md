@@ -10,6 +10,8 @@ There is no universal “latest domain” field in a URL. If available public ev
 
 Start with [automatic continuity: how it works and how to use it](docs/AUTOMATIC_CONTINUITY.md). For installation and Store submission, use [the complete Chrome guide](docs/CHROME_INSTALL_AND_STORE.md).
 
+For every current feature, worked examples, a reproducible owned-HTTPS lab, optional service/registry setup and the status of all designed ideas, read [the complete feature and real-world guide](docs/FEATURES_AND_REAL_WORLD_GUIDE.md).
+
 Use the [Internet discovery operation guide](docs/INTERNET_DISCOVERY_OPERATION.md) for the working archive flow and optional search service. The [implementation status](docs/INTERNET_DISCOVERY_STATUS.md) distinguishes delivered code from the wider [design](docs/INTERNET_DISCOVERY_PLAN.md), [80 ideas](docs/INTERNET_DISCOVERY_IDEAS.md), [36-task backlog](docs/INTERNET_DISCOVERY_BACKLOG.md) and [evaluation plan](docs/INTERNET_DISCOVERY_EVALUATION.md). Real-provider availability and identity accuracy are separate from controlled engineering tests.
 
 ## Find and follow a website
