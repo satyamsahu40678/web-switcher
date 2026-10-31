@@ -11,6 +11,7 @@ let pendingImport;
 let continuityResult;
 let continuityBusy = false;
 let internetUi;
+const sharedChecks = new Map();
 function announce(text, isError = false) {
   notice.hidden = false;
   notice.textContent = text;
@@ -39,6 +40,35 @@ function action(label, callback, className = 'secondary small') {
 function applyTheme(value) {
   if (value === 'light' || value === 'dark') document.documentElement.dataset.theme = value;
   else delete document.documentElement.dataset.theme;
+}
+function mappingInput() {
+  return {...Object.fromEntries(new FormData(form)), followDestination: document.querySelector('#follow-destination').checked};
+}
+async function checkSharedDestination(followOrigin, generation) {
+  const checked = await request({type: 'checkDestinationGroup', followOrigin, generation});
+  const stopped = checked.blocked || checked;
+  if (stopped.status === 'permission_required' && Array.isArray(stopped.requiredOrigins) && stopped.requiredOrigins.length) {
+    sharedChecks.set(followOrigin, [...stopped.requiredOrigins]);
+    announce('The shared destination declares another origin. Review the requested address and allow its next check below.');
+    return;
+  }
+  sharedChecks.delete(followOrigin);
+  if (checked.blocked || ['blocked', 'unavailable', 'unknown', 'conflict', 'loop'].includes(stopped.status)) {
+    const reasons = {
+      changed: 'The group changed while checking. Review it and check again.',
+      paused: 'The group is paused or no active member remains.',
+      expired: 'This mapping expired. Recheck and renew it before following more moves.',
+      override: 'A signed registry decision takes precedence. Review it in settings.',
+      conflict: 'The move signals disagree or conflict with an existing mapping. No shared destination was changed.',
+      loop: 'The declared move returns to an old group address. No shared destination was changed.',
+      permission: 'Browser access changed. Grant the required source and destination access before checking again.'
+    };
+    announce(reasons[stopped.reason] || 'A working successor could not be established. The shared destination was not changed.', true);
+    return;
+  }
+  announce(checked.updated
+    ? `Shared destination updated to ${checked.currentOrigin}. All linked mappings use this address without renewing their expiry.`
+    : `Shared destination checked: ${checked.currentOrigin || 'the saved address remains current'}.`);
 }
 async function render() {
   snapshot = await request({type: 'read'});
@@ -83,6 +113,7 @@ async function render() {
   document.querySelector('#empty').hidden = config.mappings.length > 0;
   for (const mapping of config.mappings) {
     const card = element('article', undefined, 'mapping');
+    card.dataset.mappingId = mapping.id;
     const expired = mapping.expiresAt <= Date.now() || mapping.createdAt > Date.now();
     const granted = grantedOrigins.includes(mapping.sourceOrigin);
     const state = expired ? 'Needs verification' : !granted ? 'Access needed' : paused || !mapping.enabled ? 'Paused' : 'Enabled';
@@ -91,6 +122,14 @@ async function render() {
     card.append(element('p', `→ ${mapping.destinationOrigin}`, 'destination'));
     card.append(element('p', 'User configured · Not owner or registry verified', 'provenance'));
     card.append(element('p', `Confirmed locally ${new Date(mapping.createdAt).toLocaleString()} · ${mapping.pathPolicy === 'preserve' ? 'Keeps the page path' : 'Opens homepage'} · Expires ${new Date(mapping.expiresAt).toLocaleString()}`, 'hint'));
+    if (mapping.followOrigin) {
+      const members = config.mappings.filter(item => item.followOrigin === mapping.followOrigin);
+      card.append(element('p', 'Shared destination · follows declared moves', 'provenance'));
+      card.append(element('p', `${members.length} linked old origins · Current: ${mapping.destinationOrigin}`, 'hint'));
+      card.append(element('p', `Group started at ${mapping.followOrigin}. Linked origins: ${members.map(item => item.sourceOrigin).join(', ')}`, 'hint'));
+    } else {
+      card.append(element('p', 'Following destination moves links every local mapping currently pointing to this address; their individual expiry and page-path choices stay unchanged.', 'hint'));
+    }
     const controls = element('div', undefined, 'actions');
     if (!granted) controls.append(action('Grant source access', async () => {
       const accepted = await chrome.permissions.request({origins: [permissionFor(mapping.sourceOrigin)]});
@@ -98,6 +137,36 @@ async function render() {
       await request({type: 'toggle', id: mapping.id, enabled: mapping.enabled});
     }));
     if (!expired) controls.append(action(mapping.enabled ? 'Pause' : 'Enable', () => request({type: 'toggle', id: mapping.id, enabled: !mapping.enabled})));
+    if (!expired) controls.append(action(mapping.pathPolicy === 'preserve' ? 'Open homepage only' : 'Keep page paths', async () => {
+      const pathPolicy = mapping.pathPolicy === 'preserve' ? 'homepage' : 'preserve';
+      await request({type: 'setPathPolicy', id: mapping.id, pathPolicy, generation: config.generation});
+      announce(pathPolicy === 'preserve'
+        ? 'Mapping updated. Ordinary page links keep their page path on the saved domain; queries and fragments are removed.'
+        : 'Mapping updated. Links open the saved destination homepage.');
+    }));
+    if (!expired) controls.append(action(mapping.followOrigin ? 'Stop following destination moves' : 'Follow destination moves', async () => {
+      const enabled = !mapping.followOrigin;
+      if (enabled) {
+        const wide = document.querySelector('#follow-wide-access').checked ? ['https://*/*'] : [];
+        const accepted = await chrome.permissions.request({origins: [...new Set([permissionFor(mapping.sourceOrigin), permissionFor(mapping.destinationOrigin), ...wide])]});
+        if (!accepted) throw new Error('Access was not granted. Shared destination following was not enabled.');
+      }
+      await request({type: 'setDestinationFollow', id: mapping.id, generation: config.generation, enabled});
+      if (!enabled) sharedChecks.delete(mapping.followOrigin);
+      announce(enabled ? 'Destination following enabled for all local mappings sharing this address. Declared future moves are checked on visits.' : 'Destination following stopped for every linked mapping. Their current saved destinations remain.');
+    }));
+    if (!expired && mapping.followOrigin) {
+      controls.append(action('Check shared destination now', () => checkSharedDestination(mapping.followOrigin, config.generation)));
+      const requiredOrigins = sharedChecks.get(mapping.followOrigin);
+      if (requiredOrigins?.length) {
+        card.append(element('p', `Next check requires: ${requiredOrigins.join(', ')}`, 'hint'));
+        controls.append(action('Allow next shared destination check', async () => {
+          const accepted = await chrome.permissions.request({origins: requiredOrigins.map(permissionFor)});
+          if (!accepted) throw new Error('Permission was not granted. The shared destination was not changed.');
+          await checkSharedDestination(mapping.followOrigin, config.generation);
+        }));
+      }
+    }
     controls.append(action('Open homepage', () => chrome.tabs.create({url: mapping.destinationOrigin + '/'})));
     controls.append(action('Remove', async () => {
       await request({type: 'remove', id: mapping.id});
@@ -132,7 +201,7 @@ function previewMapping() {
   const preview = document.querySelector('#mapping-preview');
   preview.replaceChildren();
   try {
-    const input = Object.fromEntries(new FormData(form));
+    const input = mappingInput();
     const mapping = createMapping(input, Date.now(), 'preview', {allowTestOrigins: ALLOW_TEST_ORIGINS});
     const old = new URL(mapping.sourceOrigin);
     preview.append(element('strong', 'Preview · exact origin only'));
@@ -331,7 +400,7 @@ form.addEventListener('change', previewMapping);
 form.addEventListener('submit', async event => {
   event.preventDefault();
   if (saving || !form.reportValidity()) return;
-  const input = Object.fromEntries(new FormData(form));
+  const input = mappingInput();
   let origin;
   let grantedBefore = false;
   let committed = false;
@@ -343,7 +412,9 @@ form.addEventListener('submit', async event => {
     if (snapshot?.config.mappings.some(m => m.sourceOrigin === origin)) throw new Error('This source already has a mapping. Remove it before adding a replacement.');
     grantedBefore = snapshot?.grantedOrigins.includes(origin) || false;
     // Request directly within the submit gesture before asynchronous work.
-    const accepted = await chrome.permissions.request({origins: [permissionFor(origin)]});
+    const wide = input.followDestination && document.querySelector('#follow-wide-access').checked ? ['https://*/*'] : [];
+    const origins = [permissionFor(origin), ...(input.followDestination ? [permissionFor(mapping.destinationOrigin), ...wide] : [])];
+    const accepted = await chrome.permissions.request({origins: [...new Set(origins)]});
     if (!accepted) throw new Error('Source access was not granted. No mapping was saved. You can open the destination manually.');
     await request({type: 'save', input});
     committed = true;
@@ -407,6 +478,7 @@ document.querySelector('#import-file').addEventListener('change', async event =>
       if (currentOrigins.has(mapping.sourceOrigin)) replacements++;
       const row = element('li', `${mapping.sourceOrigin} → ${mapping.destinationOrigin}`);
       row.append(element('span', `${currentOrigins.has(mapping.sourceOrigin) ? 'Replaces existing source' : 'New source'} · User configured`));
+      if (mapping.followOrigin) row.append(element('span', `Follows shared destination moves · Group started at ${mapping.followOrigin}`));
       list.append(row);
     }
     document.querySelector('#import-summary').textContent = `${settings.mappings.length} incoming mappings: ${settings.mappings.length - replacements} new, ${replacements} replacements. All ${snapshot?.config.mappings.length || 0} existing mappings will be replaced.`;
@@ -453,6 +525,12 @@ if (source) {
   previewMapping();
 }
 render().catch(error => announce(error.message, true));
+let mappingRefreshTimer;
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area !== 'local' || !changes.config || JSON.stringify(changes.config.oldValue) === JSON.stringify(changes.config.newValue)) return;
+  clearTimeout(mappingRefreshTimer);
+  mappingRefreshTimer = setTimeout(() => render().catch(error => announce(error.message, true)), 75);
+});
 internetUi = initializeInternetUi({request, refresh: render, allowTestOrigins: ALLOW_TEST_ORIGINS, providerUrls: INTERNET_PROVIDER_FIXTURES});
 
 async function importCatalog(text) {

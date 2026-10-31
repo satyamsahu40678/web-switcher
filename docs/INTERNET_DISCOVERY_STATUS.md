@@ -1,6 +1,6 @@
 # Internet discovery: delivered scope and limits
 
-Updated 29 October 2026 (Asia/Kolkata). This is the current scope note for the Internet-discovery implementation. The [operation guide](INTERNET_DISCOVERY_OPERATION.md) covers usage/deployment; exact executed outcomes belong in [the evidence ledger](IMPLEMENTATION_STATUS.md). The earlier 80-idea register and 36-task backlog remain a wider roadmap, not 80 features claimed complete.
+Updated 31 October 2026 (Asia/Kolkata). This is the scope note for the Internet-discovery implementation. The [operation guide](INTERNET_DISCOVERY_OPERATION.md) covers usage/deployment; exact executed outcomes belong in [the evidence ledger](IMPLEMENTATION_STATUS.md). The [complete feature guide](FEATURES_AND_REAL_WORLD_GUIDE.md) also covers the later path-preserving and shared-group features. The earlier 80-idea register and 36-task backlog remain a wider roadmap, not 80 features claimed complete.
 
 ## What the user can do
 
@@ -51,6 +51,6 @@ The following maps the [NET task definitions](INTERNET_DISCOVERY_BACKLOG.md) to 
 
 ## Current external constraints
 
-The managed environment has GitHub access, but Archive.org, Web Archive and Brave Search are absent from its enforced egress list; no `BRAVE_SEARCH_API_KEY` is configured. A draft for those hosts and a secure optional search-key binding was saved for environment review. A draft is not applied access. Tests use controlled sources rather than bypassing those restrictions.
+The 31 October managed-environment observation reports enforced access for GitHub and the archive/search adapter hosts, superseding the earlier saved-but-unapplied host draft. Allowed hosts do not establish provider availability, search credential authorization, archive coverage or public-domain identity accuracy. A service operator still needs its own securely configured provider credential for paid search and must validate real upstream access in its deployment. Controlled test results do not imply those live checks succeeded.
 
 The supplied public movie-site domain pair has not been independently verified and is not hardcoded in code, seed data or expected public-provider answers. A person can try an old address in their installed browser; whether it returns useful evidence depends on what the public providers contain and permit at that time. Failure is reported rather than replaced with an invented domain.

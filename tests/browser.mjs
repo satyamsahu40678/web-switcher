@@ -45,8 +45,10 @@ const server = http.createServer((req, res) => {
     res.statusCode = 302;
     res.setHeader('Location', `http://old.test:${port}/return`);
     res.end();
+  } else if (req.headers.host.startsWith('new.test:') && req.url === '/script-bounce') {
+    res.end(`<!doctype html><title>Controlled script bounce</title><script>location.replace('http://old.test:${port}/return-from-script')</script>`);
   } else {
-    res.end('<!doctype html><title>Controlled origin</title><h1>Controlled origin</h1>');
+    res.end(`<!doctype html><title>Controlled origin</title><h1>Controlled origin</h1><a id="old-page-link" href="http://old.test:${port}/download-invincible-hindi-dubbed-series/">Open another old page</a>`);
   }
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -66,6 +68,17 @@ async function launch() {
   if (!worker) worker = await context.waitForEvent('serviceworker');
   extensionId = worker.url().split('/')[2];
   browserVersion = context.browser()?.version() || await worker.evaluate(() => navigator.userAgent);
+  await worker.evaluate(() => {
+    globalThis.__navigationDiagnostics = [];
+    chrome.webNavigation?.onCommitted.addListener(detail => {
+      if (detail.frameId !== 0) return;
+      let pathname;
+      try { pathname = new URL(detail.url).pathname; } catch { pathname = 'invalid'; }
+      // Fixture-only diagnostics exclude URL queries/fragments and stay bounded.
+      globalThis.__navigationDiagnostics.push({tabId: detail.tabId, pathname, transitionType: detail.transitionType, transitionQualifiers: detail.transitionQualifiers, documentId: detail.documentId});
+      globalThis.__navigationDiagnostics = globalThis.__navigationDiagnostics.slice(-24);
+    });
+  });
 }
 async function check(id, fn) {
   activeCheck = id;
@@ -99,7 +112,7 @@ try {
   await check('B01_save_mapping_through_ui', async () => {
     await settings.getByLabel('Old origin', {exact: true}).fill(sourceOrigin);
     await settings.getByLabel('Current origin', {exact: true}).fill(targetOrigin);
-    await settings.getByLabel('When opening a link').selectOption('preserve');
+    assert.equal(await settings.getByLabel('When opening a link').inputValue(), 'preserve', 'A newly entered manual mapping should preserve ordinary page paths by default.');
     await settings.getByLabel('I have checked that this destination is the site I intend to visit.').check();
     await settings.getByRole('button', {name: 'Connect these addresses'}).click();
     await settings.getByText(`Connection saved for ${sourceOrigin}.`, {exact: true}).waitFor();
@@ -189,7 +202,7 @@ try {
     await navigate(page, `${sourceOrigin}/bounce`);
     await expectBlocked(page, 'loop');
   });
-  await check('B14a_deliberate_same_tab_retry_opens_only_saved_homepage', async () => {
+  await check('B14a_deliberate_same_tab_homepage_visits_do_not_pause', async () => {
     const homepage = structuredClone(baseline);
     homepage.mappings[0].pathPolicy = 'homepage';
     await writeConfig(homepage);
@@ -201,17 +214,11 @@ try {
       await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
       const beforeRepeat = hits.length;
       await navigate(page, oldLink);
-      await expectBlocked(page, 'loop');
-      const retry = page.getByRole('button', {name: 'Open destination homepage once', exact: true});
-      await retry.waitFor({state: 'visible'});
-      await page.getByText(targetOrigin + '/', {exact: true}).waitFor();
-      assert.equal(hits.slice(beforeRepeat).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico').length, 0,
-        'A blocked repeat must not retry the destination automatically.');
-      await Promise.all([page.waitForURL(targetOrigin + '/'), retry.click()]);
+      await page.waitForURL(targetOrigin + '/');
       await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
       const retried = hits.slice(beforeRepeat).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico');
       assert.equal(retried.length, 1);
-      assert.equal(retried[0].path, '/', 'The retry must strip the old deep path, query and fragment.');
+      assert.equal(retried[0].path, '/', 'An explicit homepage policy must still strip the old path, query and fragment.');
       assert.equal(retried[0].referrer, null);
       assert.equal(hits.slice(beforeRepeat).some(hit => hit.host === `old.test:${port}`), false);
     } finally {
@@ -225,16 +232,13 @@ try {
     await writeConfig(homepage);
     const page = await freshPage();
     try {
+      bounceHomepage = true;
       await navigate(page, sourceOrigin + '/first-link');
-      await page.waitForURL(targetOrigin + '/');
-      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
-      await navigate(page, sourceOrigin + '/another-deliberate-link');
       await expectBlocked(page, 'loop');
       const retry = page.getByRole('button', {name: 'Open destination homepage once', exact: true});
       await retry.waitFor({state: 'visible'});
       await page.evaluate(() => { window.__beforeLoopRetry = true; });
       const beforeRetry = hits.length;
-      bounceHomepage = true;
       await retry.click();
       await page.waitForFunction(() => !window.__beforeLoopRetry && document.body.dataset.reason === 'loop');
       await expectBlocked(page, 'loop');
@@ -256,10 +260,8 @@ try {
     await writeConfig(homepage);
     const page = await freshPage();
     try {
+      bounceHomepage = true;
       await navigate(page, sourceOrigin + '/first-link');
-      await page.waitForURL(targetOrigin + '/');
-      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
-      await navigate(page, sourceOrigin + '/repeat-link');
       await expectBlocked(page, 'loop');
       const retry = page.getByRole('button', {name: 'Open destination homepage once', exact: true});
       await retry.waitFor({state: 'visible'});
@@ -273,9 +275,82 @@ try {
       assert.equal(hits.slice(beforeRetry).filter(hit => hit.path !== '/favicon.ico').length, 0,
         'A stale loop-recovery choice must not contact either the old or changed destination.');
     } finally {
+      bounceHomepage = false;
       await page.close();
       await writeConfig(baseline);
     }
+  });
+  await check('B14d_public_article_path_survives_rapid_typed_and_clicked_visits', async () => {
+    const page = await freshPage();
+    const slug = '/download-invincible-hindi-dubbed-series/';
+    const beforeVisits = hits.length;
+    try {
+      for (let visit = 0; visit < 2; visit++) {
+        await navigate(page, `${sourceOrigin}${slug}?public=fixture#private-fragment`);
+        await page.waitForURL(targetOrigin + slug);
+        await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      }
+      // A genuine user link from the current destination is independent of an
+      // automatic HTTP/JavaScript bounce back into a retired source.
+      await Promise.all([page.waitForURL(targetOrigin + slug), page.getByRole('link', {name: 'Open another old page'}).click()]);
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      await page.reload({waitUntil: 'domcontentloaded'});
+      assert.equal(page.url(), targetOrigin + slug);
+      const destinationHits = hits.slice(beforeVisits).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico');
+      assert.equal(destinationHits.length, 4, 'Two deliberate address navigations, one link click and a reload must reach the article without a pause or homepage fallback.');
+      assert.ok(destinationHits.every(hit => hit.path === slug), 'The exact public article path is retained and URL query/fragment are dropped.');
+      assert.ok(destinationHits.slice(0, 3).every(hit => hit.referrer === null));
+      assert.equal(hits.slice(beforeVisits).some(hit => hit.host === `old.test:${port}`), false);
+    } finally { await page.close(); }
+  });
+  await check('B14e_javascript_destination_return_loop_still_stops', async () => {
+    const page = await freshPage();
+    try {
+      await navigate(page, sourceOrigin + '/script-bounce');
+      await expectBlocked(page, 'loop');
+      assert.equal(await page.getByRole('heading', {name: 'Switch paused', exact: true}).count(), 1);
+    } finally { await page.close(); }
+  });
+  await check('B14f_saved_homepage_mapping_can_keep_article_paths', async () => {
+    const homepage = structuredClone(baseline);
+    homepage.mappings[0].pathPolicy = 'homepage';
+    await writeConfig(homepage);
+    const page = await freshPage();
+    try {
+      await settings.reload();
+      await settings.getByRole('button', {name: 'Keep page paths', exact: true}).click();
+      await settings.getByRole('button', {name: 'Open homepage only', exact: true}).waitFor();
+      assert.equal((await currentConfig()).mappings[0].pathPolicy, 'preserve');
+      const slug = '/download-invincible-hindi-dubbed-series/';
+      await navigate(page, sourceOrigin + slug);
+      await page.waitForURL(targetOrigin + slug);
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+    } finally {
+      await page.close();
+      // The UI mutation commits new DNR rules. Keep the shared baseline's
+      // generation aligned with those rules for the remaining gate checks.
+      baseline.generation = (await currentConfig()).generation;
+      await writeConfig(baseline);
+    }
+  });
+  await check('B14g_preserve_loop_retry_opens_the_checked_page_path', async () => {
+    const page = await freshPage();
+    try {
+      await navigate(page, sourceOrigin + '/bounce');
+      await expectBlocked(page, 'loop');
+      await page.getByText(targetOrigin + '/return', {exact: true}).waitFor();
+      const beforeRetry = hits.length;
+      await Promise.all([
+        page.waitForURL(targetOrigin + '/return'),
+        page.getByRole('button', {name: 'Open mapped page once', exact: true}).click(),
+      ]);
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      const destinationHits = hits.slice(beforeRetry).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico');
+      assert.equal(destinationHits.length, 1);
+      assert.equal(destinationHits[0].path, '/return', 'An explicit preserved-path retry must not silently fall back to the homepage.');
+      assert.equal(destinationHits[0].referrer, null);
+      assert.equal(hits.slice(beforeRetry).some(hit => hit.host === `old.test:${port}`), false);
+    } finally { await page.close(); }
   });
   await check('B15_ungranted_source_gate_refused', async () => {
     const ungranted = structuredClone(baseline);
@@ -348,6 +423,10 @@ try {
     } catch { /* Failure diagnostics must preserve the original test failure. */ }
   }
   if (notices.some(Boolean)) error.message += `; page notices: ${notices.filter(Boolean).join(' | ')}`;
+  try {
+    const navigationDiagnostics = await worker?.evaluate(() => globalThis.__navigationDiagnostics || []);
+    if (navigationDiagnostics?.length) error.message += `; fixture navigation commits: ${JSON.stringify(navigationDiagnostics)}`;
+  } catch { /* Keep the original failure if its worker stopped. */ }
   console.error(`FAIL ${activeCheck}: ${error.message}`);
   if (process.env.GITHUB_ACTIONS === 'true') {
     // Check-run annotations remain readable through the GitHub API even when

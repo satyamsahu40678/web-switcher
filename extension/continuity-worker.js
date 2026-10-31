@@ -1,6 +1,6 @@
 import {normalizeSource, emptyContinuityState, validateContinuityState, discoverContinuity} from './continuity.js';
 import {createContinuityProbe} from './continuity-probe.js';
-import {permissionFor, resolveRoute} from './core.js';
+import {permissionFor, resolveRoute, originOf} from './core.js';
 
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function compileContinuityRules(config, state, grantedOrigins, gateUrl, reservations = {}) {
@@ -48,11 +48,18 @@ export function createContinuityController({chromeApi, allowTestOrigins = false,
     validateContinuityState(state, options);
     await chromeApi.storage.local.set({continuityState: state});
   }
-  async function discover(value) {
+  async function discover(value, {blockedOrigins = []} = {}) {
     const sourceOrigin = normalized(value);
+    if (!Array.isArray(blockedOrigins) || blockedOrigins.length > 250) throw new Error('Invalid blocked origin set.');
+    const blocked = new Set(blockedOrigins.map(origin => originOf(origin, options)));
+    const groupProbe = async (url, probeOptions) => {
+      const origin = new URL(url).origin;
+      if (blocked.has(origin)) return {url, origin, status: 'blocked', httpStatus: 0, reason: 'MAPPING_GROUP_LOOP'};
+      return guardedProbe(url, probeOptions);
+    };
     if (await isReserved(sourceOrigin)) return {status: 'unknown', sourceOrigin, chain: [], reason: 'SIGNED_REGISTRY_PRECEDENCE'};
     const before = await read();
-    const resolved = await discoverContinuity(sourceOrigin, {state: before, probe: guardedProbe, hasPermission: allowed, allowTestOrigins});
+    const resolved = await discoverContinuity(sourceOrigin, {state: before, probe: groupProbe, hasPermission: allowed, allowTestOrigins});
     if (await reservedResult(resolved.result)) return {status: 'unknown', sourceOrigin, chain: [], reason: 'SIGNED_REGISTRY_PRECEDENCE'};
     // A discovery result must not restore a site or its history after another
     // context paused, forgot, or cleared it while the network was in flight.

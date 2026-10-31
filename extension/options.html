@@ -96,11 +96,15 @@
             <label for="destination">Current origin</label>
             <input id="destination" name="destinationOrigin" type="url" placeholder="https://current-site.com" required maxlength="512" autocomplete="off" spellcheck="false">
             <div class="form-row">
-              <div><label for="path-policy">When opening a link</label><select id="path-policy" name="pathPolicy"><option value="homepage">Open the homepage</option><option value="preserve">Keep its page path</option></select></div>
+              <div><label for="path-policy">When opening a link</label><select id="path-policy" name="pathPolicy"><option value="preserve">Keep its page path</option><option value="homepage">Open the homepage</option></select></div>
               <div><label for="duration">Verify again after</label><select id="duration" name="durationHours"><option value="24">24 hours</option><option value="1">1 hour</option><option value="168">7 days</option></select></div>
             </div>
-            <p class="hint">Queries and fragments are removed. Keep paths only when they are public and compatible; private data can occur in a path.</p>
+            <p class="hint">Keep its page path changes the domain while keeping the page address, such as /articles/42. Choose it when both sites use the same public paths. Queries and fragments are removed; sensitive links can require homepage confirmation.</p>
             <div id="mapping-preview" class="mapping-preview" aria-live="polite" hidden></div>
+            <label class="check-label"><input id="follow-destination" name="followDestination" type="checkbox"><span>Follow future moves for all mappings to this destination</span></label>
+            <p class="hint">Groups the old origins sharing this destination. On visits, checks its declared moves and updates the whole group together. New origins need browser access; missing or conflicting move evidence can stop the check. Existing mapping expiry and page-path choices stay in effect.</p>
+            <label class="check-label"><input id="follow-wide-access" type="checkbox"><span>Allow future destination checks across HTTPS websites</span></label>
+            <p class="hint">Optional broad browser access lets selected shared groups check later HTTPS destinations without another origin prompt. It does not enroll unrelated websites. Leave unchecked to approve each new origin; existing browser grants persist until revoked in extension settings.</p>
             <label class="check-label"><input id="verified" type="checkbox" required><span>I have checked that this destination is the site I intend to visit.</span></label>
             <button id="save" type="submit" class="primary">Connect these addresses <span aria-hidden="true">→</span></button>
             <p class="hint">Your browser will ask for access to the old origin. Protocol and hostname must match exactly.</p>

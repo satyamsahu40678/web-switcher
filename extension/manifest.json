@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Web Switcher",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "minimum_chrome_version": "120",
   "description": "Find changed website addresses using live signals, public archives and optional web search, with local controls.",
   "icons": {
@@ -15,7 +15,8 @@
     "declarativeNetRequestWithHostAccess",
     "activeTab",
     "alarms",
-    "webRequest"
+    "webRequest",
+    "webNavigation"
   ],
   "optional_host_permissions": [
     "http://*/*",

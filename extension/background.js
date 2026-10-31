@@ -4,11 +4,17 @@ import {combineConfig, resolveWithCatalog} from './catalog-adapter.js';
 import {verifyCatalog, parseStrictJson} from './security/catalog.mjs';
 import {createContinuityController} from './continuity-worker.js';
 import {createInternetController} from './internet-worker.js';
+import {gateNavigation, freshGateNavigation, navigationBurst, MAX_NAVIGATION_BURST} from './navigation-guard.js';
+import {createMappingFollower} from './mapping-follow.js';
 
 const options = {allowTestOrigins: ALLOW_TEST_ORIGINS};
 const continuity = createContinuityController({chromeApi: chrome, allowTestOrigins: ALLOW_TEST_ORIGINS, isReserved: async origin => {
   const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);
 }});
+const mappingFollower = createMappingFollower({continuity, readConfig, commitConfig, allowTestOrigins: ALLOW_TEST_ORIGINS,
+  isReserved: async origin => {const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);},
+  hasPermission: origin => chrome.permissions.contains({origins: [permissionFor(origin)]})
+});
 const internet = createInternetController({chromeApi: chrome, continuity, allowTestOrigins: ALLOW_TEST_ORIGINS, providerUrls: ALLOW_TEST_ORIGINS ? INTERNET_PROVIDER_FIXTURES || undefined : undefined,
   isReserved: async origin => {const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);},
   readConfig,
@@ -122,56 +128,92 @@ function fromPage(sender, path) {
   catch { return false; }
 }
 async function recordSwitch(result, sender, {issueRetry = false, retry = false, retryToken} = {}) {
-  const {attempts = {}, receiptTabs = {}, routeRetries = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries']);
+  const {attempts = {}, receiptTabs = {}, routeRetries = {}, navigationGates = {}, navigationBursts = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries', 'navigationGates', 'navigationBursts']);
   // Different retired aliases of one signed family share the same attempt.
   // Explicit local mappings retain their independent user-configured identity.
-  const key = `${sender.tab.id}:${result.familyId ? `registry:${result.familyId}` : result.mappingId}`;
+  const key = `${sender.tab.id}:${result.familyId ? `registry:${result.familyId}` : result.localGroupId ? `local-group:${result.localGroupId}` : result.mappingId}`;
   const now = Date.now();
   const tabKey = String(sender.tab.id);
   const pending = routeRetries[tabKey];
   const homepage = result.destinationOrigin + '/';
+  const targetUrl = result.url;
+  const fresh = freshGateNavigation(navigationGates[tabKey], sender, now);
+  const gates = Object.fromEntries(Object.entries(navigationGates).filter(([, value]) => now >= value.observedAt && now - value.observedAt <= 120000));
+  if (sender.documentId && (!gates[tabKey] || gates[tabKey].documentId === sender.documentId)) {
+    gates[tabKey] = {documentId: sender.documentId, gatePath: new URL(sender.url).pathname, observedAt: now, fresh: false, consumed: true};
+  }
+  // Browser-owned transition metadata can authorize one fresh document only.
+  // Consuming it never resets the independent ceiling on rapid switches.
+  await chrome.storage.session.set({navigationGates: gates});
+  const burst = navigationBurst(navigationBursts[key], now);
   const retries = Object.fromEntries(Object.entries(routeRetries).filter(([, value]) => value.expiresAt > now && value.expiresAt <= now + 120000));
   if (retry) {
-    // A deliberate click may open only the current homepage. Its capability is
+    // A deliberate click may open only the current policy's target. Its capability is
     // single-use and bound to the exact gate document, tab and routing identity.
     // A new automatic bounce still sees the renewed attempt below.
-    if (typeof retryToken !== 'string' || !pending || pending.token !== retryToken || !sender.documentId || pending.documentId !== sender.documentId || pending.key !== key || pending.sourceOrigin !== result.sourceOrigin || pending.homepage !== homepage || pending.expiresAt <= now || pending.expiresAt > now + 120000) return {status: 'blocked', reason: 'changed'};
+    if (typeof retryToken !== 'string' || !pending || pending.token !== retryToken || !sender.documentId || pending.documentId !== sender.documentId || pending.key !== key || pending.sourceOrigin !== result.sourceOrigin || pending.targetUrl !== targetUrl || pending.expiresAt <= now || pending.expiresAt > now + 120000) return {status: 'blocked', reason: 'changed'};
     delete retries[tabKey];
     await chrome.storage.session.set({routeRetries: retries});
-  } else if (loopDetected(attempts[key], now)) {
+  } else if ((loopDetected(attempts[key], now) && !fresh) || burst.count >= MAX_NAVIGATION_BURST) {
     if (!issueRetry || !sender.documentId) return {status: 'blocked', reason: 'loop'};
     const token = crypto.randomUUID();
-    retries[tabKey] = {token, key, documentId: sender.documentId, sourceOrigin: result.sourceOrigin, homepage, expiresAt: now + 120000};
+    retries[tabKey] = {token, key, documentId: sender.documentId, sourceOrigin: result.sourceOrigin, targetUrl, expiresAt: now + 120000};
     await chrome.storage.session.set({routeRetries: retries});
-    return {status: 'blocked', reason: 'loop', homepage, retryToken: token};
+    return {status: 'blocked', reason: 'loop', homepage, retryUrl: targetUrl, retryToken: token};
   }
   // Navigating through another gate invalidates an earlier gate's retry.
   delete retries[tabKey];
   const pruned = Object.fromEntries(Object.entries(attempts).filter(([, at]) => now >= at && now - at < 15000));
   pruned[key] = now;
-  const at = Math.max(now, ...(await receiptsNow()).map(receipt => receipt.at + 1));
+  const bursts = Object.fromEntries(Object.entries(navigationBursts).filter(([, value]) => now >= value.startedAt && now - value.startedAt < 15000));
+  bursts[key] = {...burst, count: Math.min(burst.count + 1, 1000)};
+  const receipts = await receiptsNow();
+  // Several legitimate switches can complete in one millisecond. Keep their
+  // receipt keys unique without inventing future timestamps that retention
+  // would immediately discard on the next switch.
+  const usedTimes = new Set([...receipts.map(receipt => receipt.at), ...Object.keys(receiptTabs).map(Number)]);
+  let at = now;
+  while (usedTimes.has(at)) at--;
   receiptTabs[String(at)] = {tabId: sender.tab.id, expectedUrl: result.url, expiresAt: now + 120000};
-  await chrome.storage.session.set({attempts: pruned, routeRetries: retries, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.expiresAt > now))});
-  await chrome.storage.local.set({receipts: [{sourceOrigin: result.sourceOrigin, destinationOrigin: result.destinationOrigin, at}, ...await receiptsNow()].slice(0, 20)});
+  await chrome.storage.session.set({attempts: pruned, navigationBursts: bursts, routeRetries: retries, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.expiresAt > now))});
+  await chrome.storage.local.set({receipts: [{sourceOrigin: result.sourceOrigin, destinationOrigin: result.destinationOrigin, at}, ...receipts].slice(0, 20)});
   return result;
 }
 async function resolve(message, sender) {
   if (!Number.isInteger(sender.tab?.id) || sender.frameId !== 0) return {status: 'blocked', reason: 'invalid'};
-  const {config, catalog} = await routingState(await readConfig());
-  const result = resolveWithCatalog(config, message.envelope, Date.now(), catalog, options);
+  const local = await readConfig();
+  let {config, catalog} = await routingState(local);
+  let envelope = message.envelope;
+  let result = resolveWithCatalog(config, envelope, Date.now(), catalog, options);
   if (!result.sourceOrigin) return result;
   if (!(await chrome.permissions.contains({origins: [permissionFor(result.sourceOrigin)]}))) return {status: 'blocked', reason: 'permission'};
+  let validateFollow;
+  if (local.mappings.find(mapping => mapping.id === envelope.mappingId)?.followOrigin) {
+    const followed = await mappingFollower.resolve(local, envelope);
+    if (followed.blocked) return followed.blocked;
+    ({config, catalog} = await routingState(followed.config));
+    envelope = followed.envelope;
+    result = {...resolveWithCatalog(config, envelope, Date.now(), catalog, options), localGroupId: followed.localGroupId, generation: envelope.generation};
+    validateFollow = followed.validate;
+    const stopped = await validateFollow(); if (stopped) return {...stopped, generation: envelope.generation};
+  }
+  async function finishRoute(checked) {
+    const stopped = await validateFollow?.();
+    return validateFollow ? {...(stopped || checked), generation: envelope.generation} : checked;
+  }
   if (message.type === 'retryRoute') {
-    const homepage = result.destinationOrigin + '/';
-    if (!(result.status === 'ready' || (result.status === 'blocked' && ['manual', 'confirmation'].includes(result.reason))) || message.expectedUrl !== homepage) return {status: 'blocked', reason: 'changed'};
-    return recordSwitch({...result, status: 'ready', url: homepage}, sender, {retry: true, retryToken: message.retryToken});
+    const targetUrl = result.status === 'ready' ? result.url : result.homepage;
+    if (!(result.status === 'ready' || (result.status === 'blocked' && ['manual', 'confirmation'].includes(result.reason))) || message.expectedUrl !== targetUrl) return {status: 'blocked', reason: 'changed'};
+    return finishRoute(await recordSwitch({...result, status: 'ready', url: targetUrl}, sender, {retry: true, retryToken: message.retryToken}));
   }
   if (message.type === 'confirmRoute') {
     // Recompute from current signed/local policy. Never trust the click's target.
     if (!confirmationMatches(result, message.expectedUrl)) return {status: 'blocked', reason: 'changed'};
-    return recordSwitch({...result, status: 'ready', url: result.homepage}, sender, {issueRetry: true});
+    return finishRoute(await recordSwitch({...result, status: 'ready', url: result.homepage}, sender, {issueRetry: true}));
   }
-  return result.status === 'ready' ? recordSwitch(result, sender, {issueRetry: true}) : result;
+  const checked = result.status === 'ready' ? await recordSwitch(result, sender, {issueRetry: true}) : result;
+  // A loop result needs the new generation after this gate's own advancement.
+  return finishRoute(validateFollow ? {...checked, generation: envelope.generation} : checked);
 }
 async function cleanBypasses(tabId) {
   const {bypasses = {}} = await chrome.storage.session.get('bypasses');
@@ -254,6 +296,7 @@ async function handle(message, sender) {
   if (message.type === 'CONTINUITY_FOLLOW') return continuity.follow(message, () => installRules(current));
   if (message.type === 'CONTINUITY_FORGET') return continuity.forget(message, () => installRules(current));
   if (message.type === 'CONTINUITY_OPEN') return continuity.open(message);
+  if (message.type === 'checkDestinationGroup' && settings) return mappingFollower.check(message.followOrigin, message.generation);
   if (message.type === 'read') {
     const registry = await currentCatalog();
     return {config: current, continuity: await continuity.read(), receipts: await receiptsNow(), grantedOrigins: [...await grantedFor((await routingState(current)).config)], registryConfigured: Object.keys(TRUSTED_REGISTRY_KEYS).length > 0, registryRefreshConfigured: Boolean(REGISTRY_URL), registry: registry.catalog ? {sequence: registry.sequence, expiresAt: registry.catalog.expiresAt, families: registry.catalog.families, aliases: registry.catalog.aliases.flatMap(alias => { const decision = registry.catalog.decisions.find(item => item.familyId === alias.familyId); return decision ? [{sourceOrigin: alias.sourceOrigin, familyId: alias.familyId, destinationOrigin: decision.destinationOrigin, trustClass: decision.trustClass, validUntil: decision.validUntil}] : []; })} : {error: registry.error}};
@@ -284,15 +327,40 @@ async function handle(message, sender) {
     const mapping = createMapping(message.input, Date.now(), crypto.randomUUID(), options);
     if (!(await chrome.permissions.contains({origins: [permissionFor(mapping.sourceOrigin)]}))) throw new Error('Allow access to the source origin before saving.');
     next.mappings.push(mapping);
+    if (mapping.followOrigin) await joinSharedDestination(next, mapping);
   } else if (message.type === 'pauseAll') {
     if (typeof message.paused !== 'boolean') throw new Error('Invalid pause value.'); next.paused = message.paused;
   } else if (message.type === 'toggle' && settings) {
     const mapping = next.mappings.find(item => item.id === message.id);
     if (!mapping || typeof message.enabled !== 'boolean') throw new Error('Mapping not found.'); mapping.enabled = message.enabled;
+  } else if (message.type === 'setPathPolicy' && settings) {
+    const mapping = next.mappings.find(item => item.id === message.id);
+    if (message.generation !== current.generation) throw new Error('This mapping changed. Reopen settings and review it again.');
+    if (!mapping || !['homepage', 'preserve'].includes(message.pathPolicy)) throw new Error('Choose a valid mapping and link behavior.');
+    if (mapping.createdAt > Date.now() || mapping.expiresAt <= Date.now()) throw new Error('Recheck and renew this mapping before changing its link behavior.');
+    mapping.pathPolicy = message.pathPolicy;
+  } else if (message.type === 'setDestinationFollow' && settings) {
+    const mapping = next.mappings.find(item => item.id === message.id);
+    if (message.generation !== current.generation) throw new Error('These mappings changed. Reopen settings and review them again.');
+    if (!mapping || typeof message.enabled !== 'boolean') throw new Error('Choose a valid mapping and follow setting.');
+    if (mapping.createdAt > Date.now() || mapping.expiresAt <= Date.now()) throw new Error('Recheck and renew this mapping before following its destination.');
+    if (message.enabled) await joinSharedDestination(next, mapping);
+    else if (mapping.followOrigin) {
+      const group = mapping.followOrigin;
+      for (const member of next.mappings) if (member.followOrigin === group) delete member.followOrigin;
+    }
   } else if (message.type === 'remove' && settings) {
     if (!next.mappings.some(item => item.id === message.id)) throw new Error('Mapping not found.'); next.mappings = next.mappings.filter(item => item.id !== message.id);
   } else throw new Error('Unsupported request.');
   await commitConfig(next); return {ok: true};
+}
+async function joinSharedDestination(config, selected) {
+  const members = config.mappings.filter(mapping => mapping.destinationOrigin === selected.destinationOrigin);
+  const group = members.find(mapping => mapping.followOrigin && mapping !== selected)?.followOrigin || selected.followOrigin || selected.destinationOrigin;
+  if (!await chrome.permissions.contains({origins: [permissionFor(selected.sourceOrigin), permissionFor(selected.destinationOrigin)]})) throw new Error('Allow checks for the selected source and its current destination before following moves.');
+  const reservations = await continuityReservations();
+  if (reservations.blockedAll || [group, selected.destinationOrigin, ...members.map(mapping => mapping.sourceOrigin)].some(origin => reservations.origins.includes(origin))) throw new Error('Signed registry history reserves an origin in this group. Automatic unverified updates cannot replace it.');
+  for (const member of members) member.followOrigin = group;
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   // Long explicit candidate checks must not prevent cancellation, clearing or a
@@ -306,10 +374,25 @@ chrome.runtime.onStartup.addListener(() => serial(reconcile).catch(console.error
 chrome.permissions.onRemoved.addListener(() => serial(reconcile).catch(console.error));
 chrome.permissions.onAdded.addListener(() => serial(reconcile).catch(console.error));
 chrome.alarms.onAlarm.addListener(alarm => serial(async () => { await reconcile(); if (alarm.name === 'maintenance' && REGISTRY_URL) await refreshCatalog(); }).catch(console.error));
+chrome.webNavigation.onCommitted.addListener(details => {
+  const navigation = gateNavigation(details, chrome.runtime.id, Date.now());
+  if (!navigation) return;
+  // Only our own gate documents are retained. Never keep unrelated site URLs.
+  serial(async () => {
+    const now = Date.now();
+    const {navigationGates = {}} = await chrome.storage.session.get('navigationGates');
+    // A delayed commit event must not recreate freshness after this document
+    // has already sent a routing message (including after worker suspension).
+    if (navigationGates[String(details.tabId)]?.documentId === navigation.documentId && navigationGates[String(details.tabId)].consumed === true) return;
+    const entries = Object.entries(navigationGates).filter(([key, value]) => key !== String(details.tabId) && now >= value.observedAt && now - value.observedAt <= 120000);
+    await chrome.storage.session.set({navigationGates: Object.fromEntries([...entries.slice(-199), [String(details.tabId), navigation]])});
+  }).catch(console.error);
+});
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => { if (changeInfo.status === 'complete') serial(() => cleanBypasses(tabId)).catch(console.error); });
 chrome.tabs.onRemoved.addListener(tabId => serial(async () => {
   await cleanBypasses(tabId);
-  const {attempts = {}, receiptTabs = {}, routeRetries = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries']);
+  const {attempts = {}, receiptTabs = {}, routeRetries = {}, navigationGates = {}, navigationBursts = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries', 'navigationGates', 'navigationBursts']);
   delete routeRetries[String(tabId)];
-  await chrome.storage.session.set({attempts: Object.fromEntries(Object.entries(attempts).filter(([key]) => !key.startsWith(`${tabId}:`))), routeRetries, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.tabId !== tabId))});
+  delete navigationGates[String(tabId)];
+  await chrome.storage.session.set({attempts: Object.fromEntries(Object.entries(attempts).filter(([key]) => !key.startsWith(`${tabId}:`))), navigationBursts: Object.fromEntries(Object.entries(navigationBursts).filter(([key]) => !key.startsWith(`${tabId}:`))), navigationGates, routeRetries, receiptTabs: Object.fromEntries(Object.entries(receiptTabs).filter(([, ref]) => ref.tabId !== tabId))});
 }).catch(console.error));

@@ -10,6 +10,8 @@ There is no universal “latest domain” field in a URL. If available public ev
 
 Start with [automatic continuity: how it works and how to use it](docs/AUTOMATIC_CONTINUITY.md). For installation and Store submission, use [the complete Chrome guide](docs/CHROME_INSTALL_AND_STORE.md).
 
+For every current feature, worked examples, a reproducible owned-HTTPS lab, optional service/registry setup and the status of all designed ideas, read [the complete feature and real-world guide](docs/FEATURES_AND_REAL_WORLD_GUIDE.md).
+
 Use the [Internet discovery operation guide](docs/INTERNET_DISCOVERY_OPERATION.md) for the working archive flow and optional search service. The [implementation status](docs/INTERNET_DISCOVERY_STATUS.md) distinguishes delivered code from the wider [design](docs/INTERNET_DISCOVERY_PLAN.md), [80 ideas](docs/INTERNET_DISCOVERY_IDEAS.md), [36-task backlog](docs/INTERNET_DISCOVERY_BACKLOG.md) and [evaluation plan](docs/INTERNET_DISCOVERY_EVALUATION.md). Real-provider availability and identity accuracy are separate from controlled engineering tests.
 
 ## Find and follow a website
@@ -23,7 +25,7 @@ Use the [Internet discovery operation guide](docs/INTERNET_DISCOVERY_OPERATION.m
 
 The default extension flow needs **no account, Java backend, Docker deployment or registry server**. Direct checks contact selected websites; explicitly requested archive discovery also sends the selected origin to Archive.org/Web Archive. Requests omit cookies and referrers. A live unmoved source can continue on its original URL; cross-domain continuity opens the discovered homepage and does not forward the original query, fragment or private path. Sensitive original links require confirmation. Broader web search uses the optional separately deployed service and its provider credentials; it is not a preconfigured public service.
 
-Manual old→new mappings remain available as secondary explicit overrides. Signed reviewed registry decisions remain a separate, stronger provenance class. Existing manual/signed decisions take precedence for the same exact source. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion, including when reached through another source’s chain, so weaker discovery cannot silently replace that authority.
+Manual old→new mappings remain available as secondary explicit overrides. With an explicit **Follow destination moves** choice, several old sources can share one current destination and follow its later declared moves together; see [shared destination groups](docs/SHARED_DESTINATION_GROUPS.md). Signed reviewed registry decisions remain a separate, stronger provenance class. Existing manual/signed decisions take precedence for the same exact source. Previously trusted signed aliases remain reserved after catalog expiry, withdrawal or cache deletion, including when reached through another source’s chain, so weaker discovery cannot silently replace that authority.
 
 ## Implemented components
 
@@ -31,13 +33,13 @@ Manual old→new mappings remain available as secondary explicit overrides. Sign
 - **First-use Internet discovery:** keyless public archive availability/CDX/snapshot investigation, inert historical redirect/metadata/announcement extraction, explained candidates, cancellation, expiring local jobs and fresh browser checks. No local history or typed destination is required.
 - **Optional Internet search service:** separate dependency-free Node 24/SQLite service with a real Brave API adapter, shared archive adapter, authenticated owner-scoped jobs, durable phase leases/quotas/bytes, cancellation, caching and coherent backups. Missing credentials or providers produce explicit partial/unavailable results. Search cannot publish a signed route.
 - **Local control:** per-origin optional grants, optional broader HTTPS discovery consent, pause, forget, clear data, minimal receipts and bounded tab undo. No account or publisher telemetry is required.
-- **Manual mappings:** exact source/destination overrides, expiry, path policy, strict import/export and validation gate.
+- **Manual mappings and shared destination groups:** exact source/destination overrides, optional shared following across later declared moves, preserved individual expiry/path choices, strict import/export and validation at use time.
 - **Signed registry:** ES256, closed schemas, expiry, rollback/equivocation protection, reviewed public-path policies and family withdrawal. No production trust root is bundled.
 - **Java API / React admin:** PostgreSQL persistence, hostname-only lookups/reports, separate review/publication, CSRF/OIDC, immutable releases and audit. Public reports cannot publish a route.
 - **Optional server observation:** isolated authenticated fetcher with HTTP/meta successor resolution, public-DNS/address/socket checks, HTTPS/robots/resource bounds; a separate keyless queue worker still submits unverified candidates for moderation. It is not required for the browser's local discovery.
 - **Experimental owner tools:** offline key generation and record signing/verification. Live enrollment, domain-control bootstrap and key recovery are not complete.
 
-This is the reconstructed development platform with extension version **0.2.1**, not a public deployment or approved browser-store release. See [implementation evidence](docs/IMPLEMENTATION_STATUS.md), [all 134 original plan IDs](docs/PLAN_TRACEABILITY.md) and [novelty/prior-art limits](docs/NOVELTY_AND_EVIDENCE.md). The original [research plan](docs/WEB_SWITCHER_PLAN.md) remains a historical roadmap.
+This is the reconstructed development platform with extension version **0.3.0**, not a public deployment or approved browser-store release. See [implementation evidence](docs/IMPLEMENTATION_STATUS.md), [all 134 original plan IDs](docs/PLAN_TRACEABILITY.md) and [novelty/prior-art limits](docs/NOVELTY_AND_EVIDENCE.md). The original [research plan](docs/WEB_SWITCHER_PLAN.md) remains a historical roadmap.
 
 ## Install or build the extension
 
@@ -52,7 +54,17 @@ npm run check
 npm run package
 ~~~
 
-Load the resulting dist/web-switcher directory at chrome://extensions → Developer mode → Load unpacked. The ZIP is dist/web-switcher-0.2.1.zip; extract it before loading. The normal build has fixture mode disabled and no pregranted source access. For an existing installation, follow the guide's same-folder update steps and click **Reload** at chrome://extensions. A recently used mapping can pause a deliberate repeat visit; its loop screen now offers **Open destination homepage once**, with automatic loop protection retained.
+Load the resulting dist/web-switcher directory at chrome://extensions → Developer mode → Load unpacked. The ZIP is dist/web-switcher-0.3.0.zip; extract it before loading. The normal build has fixture mode disabled and no pregranted source access. For an existing installation, follow the guide's same-folder update steps and click **Reload** at chrome://extensions. Version 0.2.2 introduced the browser's `webNavigation` metadata for its own local gates to distinguish ordinary new visits from redirect returns; Chrome may show a browsing-history permission warning, but the extension does not read the history database or retain unrelated browsing history.
+
+For a known domain change with matching public page paths, choose **Keep its page path** when creating a manual mapping. For an existing homepage mapping, choose **Keep page paths** on its saved card. A link such as `https://old-site.com/download-invincible-hindi-dubbed-series/` then opens that same path on the mapped domain. Ordinary eligible visits proceed automatically. Queries/fragments are removed, sensitive links still require review, and a page can still be missing on the destination. Existing path choices and expiry are preserved unless you explicitly change them; inferred discoveries remain homepage-only by default. A remaining loop warning offers **Open mapped page once** when current policy permits that public path, while retaining redirect-loop protection.
+
+## Keep several old domains connected to one current website
+
+Create mappings from each old origin to the same current origin, then choose **Follow destination moves** on one saved card. That explicit choice groups all local mappings currently pointing at the same destination. Alternatively, check **Follow future moves for all mappings to this destination** when saving a new manual mapping; it is off by default.
+
+For example, A and B can share C. When a group visit or **Check shared destination now** observes a supported C → D move and checks D, one local update changes every group member to D and remembers C as another old alias. A later D → E can update A, B, C and D together. Each alias keeps its own expiry, enabled state and path policy; automatic discovery never renews that consent. Updates run on a group visit or explicit check, with the browser open. They are not background polling and cannot invent a new domain without surviving evidence.
+
+Use **Stop following destination moves** to stop the whole group's automatic updates while retaining the latest saved mappings. New-origin permissions, conflicts, signed-history reservations and unknown moves still stop a check. The separate unchecked **Allow future destination checks across HTTPS websites** option can request broader access at your gesture for automatic checks across later HTTPS hops; otherwise approve each new origin. The [shared destination guide](docs/SHARED_DESTINATION_GROUPS.md) gives setup, a worked chain and limits. This local group is a user-configured routing choice, not a signed registry website family or ownership proof.
 
 A custom signed-registry build additionally needs both WS_REGISTRY_KEYS_FILE (a reviewed kid→public ES256 JWK map) and WS_REGISTRY_URL (an owned fixed HTTPS catalog endpoint) when packaging. Private signing material and demo roots never belong in a distributed extension. Local continuity works without that configuration.
 
@@ -89,6 +101,7 @@ npm run package                       # inspectable extension ZIP
 npm run test:browser                   # current manual/signed native extension suite
 node tests/continuity-probe-browser.mjs # real manual-redirect/header-capture proof
 node tests/continuity-browser.mjs       # source-only discovery and remembered-chain browser journey
+node tests/shared-follow-browser.mjs    # native many-alias shared-destination journeys
 node tests/continuity-ui.mjs            # UI contract with mocked background, not native acceptance
 node tests/internet-browser.mjs         # native first-use archives and search-service connector
 node tests/internet-ui.mjs              # Internet candidate UI contract in Chromium
@@ -108,6 +121,7 @@ Current test outcomes belong to the exact revisions in [the evidence ledger](doc
 
 ## Further documentation
 
+- [Shared destination groups and later moves](docs/SHARED_DESTINATION_GROUPS.md)
 - [Automatic continuity and linked-successor memory](docs/AUTOMATIC_CONTINUITY.md)
 - [Internet discovery usage, provider setup and deployment](docs/INTERNET_DISCOVERY_OPERATION.md)
 - [Delivered Internet discovery scope and remaining roadmap](docs/INTERNET_DISCOVERY_STATUS.md)
