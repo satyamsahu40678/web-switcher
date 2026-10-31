@@ -5,11 +5,16 @@ import {verifyCatalog, parseStrictJson} from './security/catalog.mjs';
 import {createContinuityController} from './continuity-worker.js';
 import {createInternetController} from './internet-worker.js';
 import {gateNavigation, freshGateNavigation, navigationBurst, MAX_NAVIGATION_BURST} from './navigation-guard.js';
+import {createMappingFollower} from './mapping-follow.js';
 
 const options = {allowTestOrigins: ALLOW_TEST_ORIGINS};
 const continuity = createContinuityController({chromeApi: chrome, allowTestOrigins: ALLOW_TEST_ORIGINS, isReserved: async origin => {
   const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);
 }});
+const mappingFollower = createMappingFollower({continuity, readConfig, commitConfig, allowTestOrigins: ALLOW_TEST_ORIGINS,
+  isReserved: async origin => {const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);},
+  hasPermission: origin => chrome.permissions.contains({origins: [permissionFor(origin)]})
+});
 const internet = createInternetController({chromeApi: chrome, continuity, allowTestOrigins: ALLOW_TEST_ORIGINS, providerUrls: ALLOW_TEST_ORIGINS ? INTERNET_PROVIDER_FIXTURES || undefined : undefined,
   isReserved: async origin => {const reserved = await continuityReservations(); return reserved.blockedAll || reserved.origins.includes(origin);},
   readConfig,
@@ -126,7 +131,7 @@ async function recordSwitch(result, sender, {issueRetry = false, retry = false, 
   const {attempts = {}, receiptTabs = {}, routeRetries = {}, navigationGates = {}, navigationBursts = {}} = await chrome.storage.session.get(['attempts', 'receiptTabs', 'routeRetries', 'navigationGates', 'navigationBursts']);
   // Different retired aliases of one signed family share the same attempt.
   // Explicit local mappings retain their independent user-configured identity.
-  const key = `${sender.tab.id}:${result.familyId ? `registry:${result.familyId}` : result.mappingId}`;
+  const key = `${sender.tab.id}:${result.familyId ? `registry:${result.familyId}` : result.localGroupId ? `local-group:${result.localGroupId}` : result.mappingId}`;
   const now = Date.now();
   const tabKey = String(sender.tab.id);
   const pending = routeRetries[tabKey];
@@ -176,21 +181,39 @@ async function recordSwitch(result, sender, {issueRetry = false, retry = false, 
 }
 async function resolve(message, sender) {
   if (!Number.isInteger(sender.tab?.id) || sender.frameId !== 0) return {status: 'blocked', reason: 'invalid'};
-  const {config, catalog} = await routingState(await readConfig());
-  const result = resolveWithCatalog(config, message.envelope, Date.now(), catalog, options);
+  const local = await readConfig();
+  let {config, catalog} = await routingState(local);
+  let envelope = message.envelope;
+  let result = resolveWithCatalog(config, envelope, Date.now(), catalog, options);
   if (!result.sourceOrigin) return result;
   if (!(await chrome.permissions.contains({origins: [permissionFor(result.sourceOrigin)]}))) return {status: 'blocked', reason: 'permission'};
+  let validateFollow;
+  if (local.mappings.find(mapping => mapping.id === envelope.mappingId)?.followOrigin) {
+    const followed = await mappingFollower.resolve(local, envelope);
+    if (followed.blocked) return followed.blocked;
+    ({config, catalog} = await routingState(followed.config));
+    envelope = followed.envelope;
+    result = {...resolveWithCatalog(config, envelope, Date.now(), catalog, options), localGroupId: followed.localGroupId, generation: envelope.generation};
+    validateFollow = followed.validate;
+    const stopped = await validateFollow(); if (stopped) return {...stopped, generation: envelope.generation};
+  }
+  async function finishRoute(checked) {
+    const stopped = await validateFollow?.();
+    return validateFollow ? {...(stopped || checked), generation: envelope.generation} : checked;
+  }
   if (message.type === 'retryRoute') {
     const targetUrl = result.status === 'ready' ? result.url : result.homepage;
     if (!(result.status === 'ready' || (result.status === 'blocked' && ['manual', 'confirmation'].includes(result.reason))) || message.expectedUrl !== targetUrl) return {status: 'blocked', reason: 'changed'};
-    return recordSwitch({...result, status: 'ready', url: targetUrl}, sender, {retry: true, retryToken: message.retryToken});
+    return finishRoute(await recordSwitch({...result, status: 'ready', url: targetUrl}, sender, {retry: true, retryToken: message.retryToken}));
   }
   if (message.type === 'confirmRoute') {
     // Recompute from current signed/local policy. Never trust the click's target.
     if (!confirmationMatches(result, message.expectedUrl)) return {status: 'blocked', reason: 'changed'};
-    return recordSwitch({...result, status: 'ready', url: result.homepage}, sender, {issueRetry: true});
+    return finishRoute(await recordSwitch({...result, status: 'ready', url: result.homepage}, sender, {issueRetry: true}));
   }
-  return result.status === 'ready' ? recordSwitch(result, sender, {issueRetry: true}) : result;
+  const checked = result.status === 'ready' ? await recordSwitch(result, sender, {issueRetry: true}) : result;
+  // A loop result needs the new generation after this gate's own advancement.
+  return finishRoute(validateFollow ? {...checked, generation: envelope.generation} : checked);
 }
 async function cleanBypasses(tabId) {
   const {bypasses = {}} = await chrome.storage.session.get('bypasses');
@@ -273,6 +296,7 @@ async function handle(message, sender) {
   if (message.type === 'CONTINUITY_FOLLOW') return continuity.follow(message, () => installRules(current));
   if (message.type === 'CONTINUITY_FORGET') return continuity.forget(message, () => installRules(current));
   if (message.type === 'CONTINUITY_OPEN') return continuity.open(message);
+  if (message.type === 'checkDestinationGroup' && settings) return mappingFollower.check(message.followOrigin, message.generation);
   if (message.type === 'read') {
     const registry = await currentCatalog();
     return {config: current, continuity: await continuity.read(), receipts: await receiptsNow(), grantedOrigins: [...await grantedFor((await routingState(current)).config)], registryConfigured: Object.keys(TRUSTED_REGISTRY_KEYS).length > 0, registryRefreshConfigured: Boolean(REGISTRY_URL), registry: registry.catalog ? {sequence: registry.sequence, expiresAt: registry.catalog.expiresAt, families: registry.catalog.families, aliases: registry.catalog.aliases.flatMap(alias => { const decision = registry.catalog.decisions.find(item => item.familyId === alias.familyId); return decision ? [{sourceOrigin: alias.sourceOrigin, familyId: alias.familyId, destinationOrigin: decision.destinationOrigin, trustClass: decision.trustClass, validUntil: decision.validUntil}] : []; })} : {error: registry.error}};
@@ -303,6 +327,7 @@ async function handle(message, sender) {
     const mapping = createMapping(message.input, Date.now(), crypto.randomUUID(), options);
     if (!(await chrome.permissions.contains({origins: [permissionFor(mapping.sourceOrigin)]}))) throw new Error('Allow access to the source origin before saving.');
     next.mappings.push(mapping);
+    if (mapping.followOrigin) await joinSharedDestination(next, mapping);
   } else if (message.type === 'pauseAll') {
     if (typeof message.paused !== 'boolean') throw new Error('Invalid pause value.'); next.paused = message.paused;
   } else if (message.type === 'toggle' && settings) {
@@ -314,10 +339,28 @@ async function handle(message, sender) {
     if (!mapping || !['homepage', 'preserve'].includes(message.pathPolicy)) throw new Error('Choose a valid mapping and link behavior.');
     if (mapping.createdAt > Date.now() || mapping.expiresAt <= Date.now()) throw new Error('Recheck and renew this mapping before changing its link behavior.');
     mapping.pathPolicy = message.pathPolicy;
+  } else if (message.type === 'setDestinationFollow' && settings) {
+    const mapping = next.mappings.find(item => item.id === message.id);
+    if (message.generation !== current.generation) throw new Error('These mappings changed. Reopen settings and review them again.');
+    if (!mapping || typeof message.enabled !== 'boolean') throw new Error('Choose a valid mapping and follow setting.');
+    if (mapping.createdAt > Date.now() || mapping.expiresAt <= Date.now()) throw new Error('Recheck and renew this mapping before following its destination.');
+    if (message.enabled) await joinSharedDestination(next, mapping);
+    else if (mapping.followOrigin) {
+      const group = mapping.followOrigin;
+      for (const member of next.mappings) if (member.followOrigin === group) delete member.followOrigin;
+    }
   } else if (message.type === 'remove' && settings) {
     if (!next.mappings.some(item => item.id === message.id)) throw new Error('Mapping not found.'); next.mappings = next.mappings.filter(item => item.id !== message.id);
   } else throw new Error('Unsupported request.');
   await commitConfig(next); return {ok: true};
+}
+async function joinSharedDestination(config, selected) {
+  const members = config.mappings.filter(mapping => mapping.destinationOrigin === selected.destinationOrigin);
+  const group = members.find(mapping => mapping.followOrigin && mapping !== selected)?.followOrigin || selected.followOrigin || selected.destinationOrigin;
+  if (!await chrome.permissions.contains({origins: [permissionFor(selected.sourceOrigin), permissionFor(selected.destinationOrigin)]})) throw new Error('Allow checks for the selected source and its current destination before following moves.');
+  const reservations = await continuityReservations();
+  if (reservations.blockedAll || [group, selected.destinationOrigin, ...members.map(mapping => mapping.sourceOrigin)].some(origin => reservations.origins.includes(origin))) throw new Error('Signed registry history reserves an origin in this group. Automatic unverified updates cannot replace it.');
+  for (const member of members) member.followOrigin = group;
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   // Long explicit candidate checks must not prevent cancellation, clearing or a

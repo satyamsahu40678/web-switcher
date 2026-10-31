@@ -41,12 +41,19 @@ export function validateConfig(config, options = {}) {
   }
   const ids = new Set();
   const sources = new Set();
+  const followGroups = new Map();
   for (const mapping of config.mappings) {
     if (!mapping || typeof mapping.id !== 'string' || !ID.test(mapping.id) || ids.has(mapping.id) || typeof mapping.enabled !== 'boolean') throw new Error('Invalid or duplicate mapping.');
     if (originOf(mapping.sourceOrigin, options) !== mapping.sourceOrigin || originOf(mapping.destinationOrigin, {...options, target: true}) !== mapping.destinationOrigin) throw new Error('Origins must be normalized.');
     if (sources.has(mapping.sourceOrigin) || mapping.sourceOrigin === mapping.destinationOrigin) throw new Error('Each source needs a distinct destination and only one mapping.');
     if (!['homepage', 'preserve'].includes(mapping.pathPolicy)) throw new Error('Choose a supported path policy.');
     if (!Number.isSafeInteger(mapping.createdAt) || !Number.isSafeInteger(mapping.expiresAt) || mapping.createdAt < 0 || mapping.expiresAt - mapping.createdAt < (mapping.provenance === 'registry' ? 1 : 3600000) || mapping.expiresAt - mapping.createdAt > MAX_VALIDITY_MS) throw new Error('Mapping validity must be between one hour and seven days.');
+    if (Object.hasOwn(mapping, 'followOrigin')) {
+      if (mapping.provenance === 'registry' || originOf(mapping.followOrigin, {...options, target: true}) !== mapping.followOrigin) throw new Error('Follow groups are normalized local user decisions, not registry authority.');
+      const destination = followGroups.get(mapping.followOrigin);
+      if (destination !== undefined && destination !== mapping.destinationOrigin) throw new Error('Every member of a follow group must share its current destination.');
+      followGroups.set(mapping.followOrigin, mapping.destinationOrigin);
+    }
     ids.add(mapping.id);
     sources.add(mapping.sourceOrigin);
   }
@@ -57,6 +64,7 @@ export function validateConfig(config, options = {}) {
 }
 
 export function createMapping(input, now, id, options = {}) {
+  if (input.followDestination !== undefined && typeof input.followDestination !== 'boolean') throw new Error('Choose whether to follow future destination moves.');
   const hours = Number(input.durationHours);
   if (!Number.isInteger(hours) || hours < 1 || hours > 168) throw new Error('Choose a validity between 1 and 168 hours.');
   const mapping = {
@@ -68,8 +76,31 @@ export function createMapping(input, now, id, options = {}) {
     createdAt: now,
     expiresAt: now + hours * 3600000
   };
+  if (input.followDestination === true) mapping.followOrigin = mapping.destinationOrigin;
   validateConfig({schemaVersion: 1, generation: 'validation', paused: false, mappings: [mapping]}, options);
   return mapping;
+}
+
+// Follow-group advancement is a local policy update, never a signed registry
+// decision. Flatten every alias onto the checked terminal without extending any
+// user's consent window or making a disabled/expired mapping active again.
+export function advanceMappingGroup(config, followOrigin, expectedDestination, newDestination, now, id, options = {}) {
+  validateConfig(config, options);
+  if (!Number.isSafeInteger(now) || now < 0 || originOf(followOrigin, {...options, target: true}) !== followOrigin || originOf(expectedDestination, {...options, target: true}) !== expectedDestination) throw new Error('The follow group or check time is invalid.');
+  const destinationOrigin = originOf(newDestination, {...options, target: true});
+  const members = config.mappings.filter(mapping => mapping.followOrigin === followOrigin);
+  if (!members.length || members.some(mapping => mapping.destinationOrigin !== expectedDestination)) throw new Error('The shared destination changed. Check it again.');
+  const representative = members.find(mapping => mapping.enabled && mapping.createdAt <= now && mapping.expiresAt > now);
+  if (config.paused || !representative) throw new Error('No current enabled mapping authorizes advancing this group.');
+  const next = structuredClone(config);
+  if (destinationOrigin === expectedDestination) return next;
+  for (const mapping of next.mappings) if (mapping.followOrigin === followOrigin) mapping.destinationOrigin = destinationOrigin;
+  if (!next.mappings.some(mapping => mapping.sourceOrigin === expectedDestination)) {
+    if (next.mappings.filter(mapping => mapping.provenance !== 'registry').length >= MAX_LOCAL_MAPPINGS) throw new Error('At most 50 local mappings are supported. Remove an old alias before following another move.');
+    next.mappings.push({id, sourceOrigin: expectedDestination, destinationOrigin, pathPolicy: representative.pathPolicy,
+      enabled: true, createdAt: representative.createdAt, expiresAt: representative.expiresAt, followOrigin});
+  }
+  return validateConfig(next, options);
 }
 
 export function permissionFor(origin) {
@@ -143,7 +174,7 @@ export function importSettings(value, generation, options = {}) {
   closed(value, ['schemaVersion', 'paused', 'mappings'], 'settings');
   if (!Array.isArray(value.mappings) || value.mappings.length > MAX_LOCAL_MAPPINGS) throw new Error('Import at most 50 local mappings.');
   for (const mapping of value.mappings) {
-    closed(mapping, ['id', 'sourceOrigin', 'destinationOrigin', 'pathPolicy', 'enabled', 'createdAt', 'expiresAt'], 'local mapping');
+    closed(mapping, ['id', 'sourceOrigin', 'destinationOrigin', 'pathPolicy', 'enabled', 'createdAt', 'expiresAt', 'followOrigin'], 'local mapping');
     if (typeof mapping.id !== 'string' || mapping.id.startsWith('registry-')) throw new Error('Registry mapping identifiers cannot be imported as local settings.');
   }
   return validateConfig({...structuredClone(value), generation}, options);

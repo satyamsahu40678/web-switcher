@@ -309,6 +309,62 @@ test('changing existing mapping link behavior preserves its identity and expiry,
   const currentEnvelope = {...envelope('https://old-site.com/download-invincible-hindi-dubbed-series/'), generation: config.generation};
   assert.equal((await send({type: 'resolve', envelope: currentEnvelope}, routeSender)).data.url, 'https://current-site.com/download-invincible-hindi-dubbed-series/');
 });
+test('enabling destination following joins every alias sharing a current origin without renewing consent', async () => {
+  const config = baseConfig();
+  config.mappings.push({...baseMapping(), id: 'local-2', sourceOrigin: 'https://older-site.com', enabled: false, pathPolicy: 'homepage'});
+  reset(config); grant(); grant('https://current-site.com');
+  const before = clone(config.mappings);
+  const response = await send({type: 'setDestinationFollow', id: 'local-1', generation: config.generation, enabled: true});
+  assert.equal(response.ok, true, response.error);
+  const current = chromeMock.storage.local.values.config;
+  assert.deepEqual(current.mappings, before.map(mapping => ({...mapping, followOrigin: 'https://current-site.com'})));
+  assert.notEqual(current.generation, config.generation);
+  assert.equal(dynamicRules.length, 1, 'Disabled or ungranted aliases are not silently enabled.');
+  const backup = (await send({type: 'EXPORT_SETTINGS'})).data;
+  assert.equal(backup.mappings.filter(mapping => mapping.followOrigin === 'https://current-site.com').length, 2);
+});
+test('a new opted-in mapping joins the existing shared seed and stopping from one alias stops the whole group', async () => {
+  const config = baseConfig(); config.mappings[0].followOrigin = 'https://earlier-current.com';
+  reset(config); grant(); grant('https://older-site.com'); grant('https://current-site.com');
+  const input = {sourceOrigin: 'https://older-site.com', destinationOrigin: 'https://current-site.com', pathPolicy: 'preserve', durationHours: 24, followDestination: true};
+  const created = await send({type: 'save', input}); assert.equal(created.ok, true, created.error);
+  const joined = clone(chromeMock.storage.local.values.config);
+  assert.equal(joined.mappings.length, 2);
+  assert.ok(joined.mappings.every(mapping => mapping.followOrigin === 'https://earlier-current.com'));
+  const stopped = await send({type: 'setDestinationFollow', id: joined.mappings[1].id, generation: joined.generation, enabled: false});
+  assert.equal(stopped.ok, true, stopped.error);
+  assert.deepEqual(chromeMock.storage.local.values.config.mappings, joined.mappings.map(({followOrigin, ...mapping}) => mapping));
+});
+test('shared following needs current permissions and a fresh settings generation and cannot mutate through popup', async () => {
+  reset(); grant();
+  const request = {type: 'setDestinationFollow', id: 'local-1', generation: 'generation-1', enabled: true};
+  const before = clone(chromeMock.storage.local.values.config);
+  assert.equal((await send(request)).ok, false);
+  grant('https://current-site.com');
+  assert.equal((await send({...request, generation: 'stale'})).ok, false);
+  assert.equal((await send(request, popupSender)).ok, false);
+  assert.deepEqual(chromeMock.storage.local.values.config, before);
+});
+test('signed reservation of a destination prevents automatic local group enrollment', async () => {
+  reset(); grant(); grant('https://current-site.com');
+  chromeMock.storage.local.values.catalogContinuityOrigins = ['https://current-site.com'];
+  const before = clone(chromeMock.storage.local.values.config);
+  const result = await send({type: 'setDestinationFollow', id: 'local-1', generation: before.generation, enabled: true});
+  assert.equal(result.ok, false); assert.match(result.error, /Signed registry/);
+  assert.deepEqual(chromeMock.storage.local.values.config, before);
+});
+test('imported local follow groups retain their decision but never manufacture destination permissions', async () => {
+  const imported = portable(); imported.mappings[0].followOrigin = 'https://current-site.com';
+  reset({schemaVersion: 1, generation: 'empty', paused: false, mappings: []}); grant();
+  assert.equal((await send({type: 'IMPORT_SETTINGS', text: JSON.stringify(imported)})).ok, true);
+  const current = chromeMock.storage.local.values.config;
+  assert.equal(current.mappings[0].followOrigin, 'https://current-site.com');
+  const response = await send({type: 'resolve', envelope: {...envelope(), generation: current.generation}}, routeSender);
+  assert.equal(response.data.status, 'permission_required');
+  assert.deepEqual(response.data.requiredOrigins, ['https://current-site.com']);
+  assert.equal(chromeMock.storage.local.values.receipts?.length || 0, 0);
+  assert.equal(grants.has('https://current-site.com/*'), false);
+});
 test('undo rejects another tab and same-origin navigation after the recorded switch', async () => {
   reset(); grant(); const result = await send({ type: 'resolve', envelope: envelope() }, routeSender); const receiptId = String(chromeMock.storage.local.values.receipts[0].at);
   tabs.set(7, { id: 7, url: result.data.url });

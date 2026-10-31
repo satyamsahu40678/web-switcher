@@ -109,7 +109,7 @@ jobs:
           export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "playwright"; process.stdout.write(chromium.executablePath())')"
           failed=0
           npm run test:browser || failed=1
-          for suite in tests/continuity-probe-browser.mjs tests/continuity-ui.mjs tests/continuity-browser.mjs tests/internet-ui.mjs tests/internet-browser.mjs; do
+          for suite in tests/continuity-probe-browser.mjs tests/continuity-ui.mjs tests/continuity-browser.mjs tests/internet-ui.mjs tests/internet-browser.mjs tests/shared-follow-browser.mjs; do
             node "$suite" || failed=1
           done
           npm --prefix apps/web run test:browser || failed=1
