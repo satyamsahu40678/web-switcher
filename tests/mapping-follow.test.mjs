@@ -8,7 +8,7 @@ const A = 'https://old-one.com', B = 'https://old-two.com', C = 'https://current
 const clone = value => structuredClone(value);
 const START = Date.parse('2026-10-31T12:00:00Z');
 function fixture() {
-  let currentTime = START, sequence = 0, discover, beforeCommit;
+  let currentTime = START, sequence = 0, discover, beforeCommit, persist = clone;
   const mapping = (source, id) => ({...createMapping({sourceOrigin: source, destinationOrigin: C, pathPolicy: 'preserve', durationHours: 24}, START - 1000, id), followOrigin: C});
   let config = {schemaVersion: 1, generation: 'generation-one', paused: false, mappings: [mapping(A, 'alias-one'), mapping(B, 'alias-two')]};
   const grants = new Set([A, B, C, D, E]), reservations = new Set(), calls = [], commits = [];
@@ -17,14 +17,14 @@ function fixture() {
   const controller = createMappingFollower({
     continuity: {async discover(origin, options) {calls.push({origin, options: clone(options)}); return discover ? discover(origin, options) : moved(origin, origin === C ? D : E);}},
     readConfig: async () => clone(config),
-    commitConfig: async (next, guard) => {if (beforeCommit) await beforeCommit(next); await guard(); validateConfig(next); config = clone(next); commits.push(clone(next));},
+    commitConfig: async (next, guard) => {if (beforeCommit) await beforeCommit(next); await guard(); validateConfig(next); config = persist(next); commits.push(clone(next));},
     isReserved: async origin => reservations.has(origin),
     hasPermission: async origin => grants.has(origin),
     now: () => currentTime, makeId: () => 'generated-' + ++sequence,
   });
   return {controller, grants, reservations, calls, commits, moved, unchanged,
     get config() {return config;}, set config(value) {config = value;},
-    setDiscover(value) {discover = value;}, setCommitHook(value) {beforeCommit = value;}, setTime(value) {currentTime = value;},
+    setDiscover(value) {discover = value;}, setCommitHook(value) {beforeCommit = value;}, setPersist(value) {persist = value;}, setTime(value) {currentTime = value;},
     envelope(id = 'alias-one', source = A + '/download-invincible-hindi-dubbed-series/?public=yes#local') {return {generation: config.generation, mappingId: id, source};},
   };
 }
@@ -57,6 +57,19 @@ test('a freshly reachable unchanged current domain does not rewrite policy or in
   const result = await f.controller.resolve(clone(f.config), f.envelope());
   assert.equal(result.currentOrigin, C); assert.equal(result.updated, false); assert.equal(result.localGroupId, C);
   assert.deepEqual(f.config, initial); assert.deepEqual(f.commits, []);
+});
+test('browser storage object-key reordering preserves own commits while array edits remain changes', async () => {
+  const f = fixture();
+  const storageOrder = value => Array.isArray(value) ? value.map(storageOrder) : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, storageOrder(value[key])])) : value;
+  f.setPersist(storageOrder);
+  const first = await f.controller.resolve(clone(f.config), f.envelope());
+  assert.equal(first.currentOrigin, D); assert.equal(await first.validate(), null);
+  assert.deepEqual(Object.keys(f.config), [...Object.keys(f.config)].sort(), 'The fixture models Chrome storage serialization rather than keeping insertion order.');
+  const second = await f.controller.resolve(clone(f.config), f.envelope('alias-two', B + '/articles/42'));
+  assert.equal(second.currentOrigin, E); assert.equal(await second.validate(), null);
+  f.config.mappings.reverse();
+  assert.equal((await second.validate()).reason, 'changed', 'An actual mapping-array change still invalidates a routing snapshot.');
 });
 
 test('static manual choices never acquire automatic follow behavior implicitly', async () => {

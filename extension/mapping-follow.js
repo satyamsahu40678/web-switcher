@@ -2,6 +2,13 @@ import {advanceMappingGroup, originOf, resolveRoute, validateConfig} from './cor
 
 const EVIDENCE = new Set(['http_redirect', 'http_refresh', 'meta_refresh', 'successor_link', 'well_known']);
 const stop = (reason, fields = {}) => ({status: 'blocked', reason, ...fields});
+function samePolicySnapshot(left, right, depth = 0) {
+  if (left === right) return true;
+  if (depth > 64 || !left || !right || typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) !== Array.isArray(right)) return false;
+  if (Array.isArray(left)) return left.length === right.length && left.every((value, index) => samePolicySnapshot(value, right[index], depth + 1));
+  const leftKeys = Object.keys(left).sort(), rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index] && samePolicySnapshot(left[key], right[key], depth + 1));
+}
 class PolicyStopped extends Error {
   constructor(blocked) { super('The mapping group can no longer be followed.'); this.blocked = blocked; }
 }
@@ -57,8 +64,9 @@ export function createMappingFollower({continuity, readConfig, commitConfig, isR
   async function inspect(expected, mappingId, extraOrigins = [], networkOrigins = [], chain = []) {
     const latest = validateConfig(await readConfig(), options);
     // Generation is mandatory, and complete snapshot equality also fences
-    // direct storage edits that neglected to rotate that generation.
-    if (latest.generation !== expected.generation || JSON.stringify(latest) !== JSON.stringify(expected)) return stop('changed');
+    // direct storage edits that neglected to rotate that generation. Chrome
+    // storage may reorder object keys; mapping-array order and values matter.
+    if (latest.generation !== expected.generation || !samePolicySnapshot(latest, expected)) return stop('changed');
     if (latest.paused) return stop('paused');
     const mapping = latest.mappings.find(item => item.id === mappingId);
     if (!mapping?.enabled || !mapping.followOrigin) return stop('paused');
