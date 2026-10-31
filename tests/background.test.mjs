@@ -38,6 +38,7 @@ const tabs = new Map();
 const tabUpdates = [];
 const alarms = [];
 const chromeMock = {
+  webNavigation: {onCommitted: event()},
   webRequest: {onHeadersReceived: event(), onErrorOccurred: event()},
   runtime: { id: extensionId, getURL: extensionUrl, onMessage: event(), onInstalled: event(), onStartup: event() },
   storage: { local: storageArea(), session: storageArea() },
@@ -158,17 +159,18 @@ test('repeated family switch is blocked by the tab-session loop guard', async ()
 });
 async function retryPreview() {
   assert.equal((await send({type: 'resolve', envelope: envelope()}, routeSender)).data.status, 'ready');
-  const second = await send({type: 'resolve', envelope: envelope('https://old-site.com/another-old-link?public=yes#private')}, routeSender);
+  const sourceEnvelope = envelope('https://old-site.com/another-old-link?public=yes#private');
+  const second = await send({type: 'resolve', envelope: sourceEnvelope}, routeSender);
   assert.equal(second.data.reason, 'loop');
   assert.equal(second.data.homepage, 'https://current-site.com/');
   assert.equal(typeof second.data.retryToken, 'string');
-  return {type: 'retryRoute', envelope: envelope(), expectedUrl: second.data.homepage, retryToken: second.data.retryToken};
+  return {type: 'retryRoute', envelope: sourceEnvelope, expectedUrl: second.data.retryUrl, retryToken: second.data.retryToken};
 }
-test('deliberate loop recovery opens only the current homepage and renews automatic protection', async () => {
+test('deliberate loop recovery keeps the safe mapped path and renews automatic protection', async () => {
   reset(); grant(); const retry = await retryPreview();
   const result = await send(retry, routeSender);
   assert.equal(result.data.status, 'ready');
-  assert.equal(result.data.url, 'https://current-site.com/');
+  assert.equal(result.data.url, 'https://current-site.com/another-old-link');
   assert.equal(chromeMock.storage.local.values.receipts.length, 2);
   const bounce = await send({type: 'resolve', envelope: envelope('https://old-site.com/different-return-path')}, {...routeSender, documentId: 'bounced-gate'});
   assert.equal(bounce.data.reason, 'loop');
@@ -217,6 +219,95 @@ test('closing a tab removes its outstanding homepage recovery capability', async
   chromeMock.tabs.onRemoved.emit(7); await send({type: 'read'});
   assert.deepEqual(chromeMock.storage.session.values.routeRetries, {});
   assert.equal((await send(retry, routeSender)).data.reason, 'changed');
+});
+function observeGate(sender, transitionType = 'typed', transitionQualifiers = ['server_redirect', 'from_address_bar']) {
+  chromeMock.webNavigation.onCommitted.emit({tabId: sender.tab.id, frameId: sender.frameId, documentId: sender.documentId, url: sender.url + '#g=generation-1&m=local-1&source=https://old-site.com/private?token=synthetic', transitionType, transitionQualifiers, documentLifecycle: 'active'});
+}
+test('fresh typed visits and real link transitions preserve the article without a false pause', async () => {
+  reset(); grant();
+  const source = envelope('https://old-site.com/download-invincible-hindi-dubbed-series/?public=yes#section');
+  for (const [index, type] of ['typed', 'typed', 'link'].entries()) {
+    const sender = {...routeSender, documentId: `fresh-gate-${index}`};
+    observeGate(sender, type);
+    const result = await send({type: 'resolve', envelope: source}, sender);
+    assert.equal(result.data.status, 'ready');
+    assert.equal(result.data.url, 'https://current-site.com/download-invincible-hindi-dubbed-series/');
+    const used = chromeMock.storage.session.values.navigationGates['7'];
+    assert.equal(used.fresh, false); assert.equal(used.consumed, true);
+    assert.equal(used.documentId, sender.documentId, 'Navigation freshness is consumed once, not inherited by another message.');
+  }
+  const replay = await send({type: 'resolve', envelope: source}, {...routeSender, documentId: 'fresh-gate-2'});
+  assert.equal(replay.data.reason, 'loop');
+  assert.equal(chromeMock.storage.local.values.receipts.length, 3);
+});
+test('late browser commit metadata cannot recreate freshness for an already-used gate document', async () => {
+  reset(); grant();
+  const sender = {...routeSender, documentId: 'late-commit-document'};
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, sender)).data.status, 'ready');
+  observeGate(sender);
+  const repeated = await send({type: 'resolve', envelope: envelope()}, sender);
+  assert.equal(repeated.data.reason, 'loop');
+  assert.equal(chromeMock.storage.local.values.receipts.length, 1);
+});
+test('redirect metadata and another gate document cannot reset an active mapping guard', async () => {
+  reset(); grant();
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, routeSender)).data.status, 'ready');
+  const redirected = {...routeSender, documentId: 'client-redirected-gate'};
+  observeGate(redirected, 'link', ['client_redirect', 'server_redirect']);
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, redirected)).data.reason, 'loop');
+  const other = {...routeSender, documentId: 'different-fresh-gate'};
+  observeGate(other);
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, redirected)).data.reason, 'loop');
+  const saved = JSON.stringify(chromeMock.storage.session.values.navigationGates);
+  assert.ok(!saved.includes('private') && !saved.includes('synthetic') && !saved.includes('old-site.com'));
+  assert.equal(chromeMock.storage.local.values.receipts.length, 1);
+});
+test('fresh-looking programmatic link bursts remain bounded and other tabs stay independent', async () => {
+  reset(); grant();
+  for (let index = 0; index < 7; index++) {
+    const sender = {...routeSender, documentId: `burst-${index}`};
+    observeGate(sender, 'link', ['server_redirect']);
+    const result = await send({type: 'resolve', envelope: envelope()}, sender);
+    assert.equal(index < 6 ? result.data.status : result.data.reason, index < 6 ? 'ready' : 'loop');
+  }
+  assert.equal(chromeMock.storage.local.values.receipts.length, 6);
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, {...routeSender, tab: {id: 8}, documentId: 'other-tab'})).data.status, 'ready');
+  chromeMock.tabs.onRemoved.emit(7); await send({type: 'read'});
+  assert.ok(!Object.keys(chromeMock.storage.session.values.navigationBursts).some(key => key.startsWith('7:')));
+});
+test('same-millisecond ordinary switches keep unique nonfuture activity and undo references', async () => {
+  reset(); grant();
+  const fixed = now(); const realNow = Date.now;
+  Date.now = () => fixed;
+  try {
+    for (let index = 0; index < 3; index++) {
+      const sender = {...routeSender, documentId: `same-millisecond-${index}`};
+      observeGate(sender);
+      assert.equal((await send({type: 'resolve', envelope: envelope()}, sender)).data.status, 'ready');
+    }
+    const activity = (await send({type: 'read'})).data.receipts;
+    assert.equal(activity.length, 3);
+    assert.equal(new Set(activity.map(receipt => receipt.at)).size, 3);
+    assert.ok(activity.every(receipt => receipt.at <= fixed));
+    assert.ok(activity.every(receipt => chromeMock.storage.session.values.receiptTabs[String(receipt.at)]?.tabId === 7));
+  } finally { Date.now = realNow; }
+});
+test('changing existing mapping link behavior preserves its identity and expiry, replaces DNR and rejects stale settings', async () => {
+  const initial = baseConfig(); initial.mappings[0].pathPolicy = 'homepage';
+  reset(initial); grant(); await reconcile();
+  const before = clone(chromeMock.storage.local.values.config.mappings[0]);
+  const message = {type: 'setPathPolicy', id: before.id, pathPolicy: 'preserve', generation: initial.generation};
+  assert.equal((await send(message, popupSender)).ok, false);
+  const changed = await send(message); assert.equal(changed.ok, true, changed.error);
+  const config = chromeMock.storage.local.values.config;
+  assert.deepEqual(config.mappings[0], {...before, pathPolicy: 'preserve'});
+  assert.notEqual(config.generation, initial.generation);
+  assert.ok(dynamicRules[0].action.redirect.regexSubstitution.includes(config.generation));
+  assert.equal((await send({...message, pathPolicy: 'homepage'})).ok, false);
+  assert.equal((await send({...message, pathPolicy: 'unsafe', generation: config.generation})).ok, false);
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, routeSender)).data.reason, 'changed');
+  const currentEnvelope = {...envelope('https://old-site.com/download-invincible-hindi-dubbed-series/'), generation: config.generation};
+  assert.equal((await send({type: 'resolve', envelope: currentEnvelope}, routeSender)).data.url, 'https://current-site.com/download-invincible-hindi-dubbed-series/');
 });
 test('undo rejects another tab and same-origin navigation after the recorded switch', async () => {
   reset(); grant(); const result = await send({ type: 'resolve', envelope: envelope() }, routeSender); const receiptId = String(chromeMock.storage.local.values.receipts[0].at);

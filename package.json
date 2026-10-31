@@ -1,6 +1,6 @@
 {
   "name": "web-switcher",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "Privacy-minded website continuity extension and verified registry platform",

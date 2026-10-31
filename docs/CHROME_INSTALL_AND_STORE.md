@@ -5,9 +5,9 @@
 ## 1. Get the extension without installing development tools
 
 1. Sign in to GitHub and open [this repository's Actions](https://github.com/satyamsahu40678/web-switcher/actions/workflows/platform.yml).
-2. Select the latest **successful** `Web Switcher platform` run for branch `feat/web-switcher-platform`. For the loop-recovery update, choose a run packaging version **0.2.1** or later. Earlier 0.2.0 artifacts do not contain that recovery action, and still older packages may lack Search public sources. A running/failed run is not the release artifact to use.
+2. Select the latest **successful** `Web Switcher platform` run for branch `feat/web-switcher-platform`. For page-path controls and fresh-navigation handling, choose a run packaging version **0.2.2** or later. Earlier artifacts do not acquire later fixes when downloaded again; 0.2.1 has only the older homepage-recovery action. A running/failed run is not the release artifact to use.
 3. Scroll to **Artifacts** and download **web-switcher-development-packages**. GitHub may require you to sign in before downloading artifacts.
-4. Extract that downloaded artifact ZIP. Inside it find `dist/web-switcher-0.2.1.zip` (or the matching version of a later successful build). The artifact also contains web application files; those are not the browser extension.
+4. Extract that downloaded artifact ZIP. Inside it find `dist/web-switcher-0.2.2.zip` (or the matching version of a later successful build). The artifact also contains web application files; those are not the browser extension.
 5. Extract **that inner extension ZIP** into a permanent folder on your computer, such as `Documents/WebSwitcher`. Its top level must contain `manifest.json`, `background.js`, `options.html` and `icons/`.
 6. Keep this folder in place while using an unpacked installation. Do not select the repository root, `apps/web`, the outer artifact ZIP or an unextracted ZIP in Chrome.
 
@@ -26,7 +26,7 @@ npm run check
 npm run package
 ```
 
-Load `dist/web-switcher/`. The current development upload ZIP is `dist/web-switcher-0.2.1.zip`; its filename follows `extension/manifest.json`'s version.
+Load `dist/web-switcher/`. The current development upload ZIP is `dist/web-switcher-0.2.2.zip`; its filename follows `extension/manifest.json`'s version.
 
 On Windows, the artifact download is the easiest method. For source builds, use WSL with the commands above, or ensure the command `python3 --version` works in your terminal: the packaging script invokes `python3`, not `py`. Java and the React application are unnecessary for extension-only builds. The checked-in PNG assets require no regeneration; optional regeneration is `CHROMIUM_PATH=/path/to/chromium node scripts/store-assets.mjs` with the locked Playwright dependency/browser available.
 
@@ -36,7 +36,7 @@ On Windows, the artifact download is the easiest method. For source builds, use 
 2. Turn on **Developer mode** using the switch at the top right.
 3. Click **Load unpacked**.
 4. Select the extracted folder that **directly contains `manifest.json`**. If building from source, select `dist/web-switcher`.
-5. Confirm the **Web Switcher** card appears and is enabled. Check that Chrome shows no extension errors.
+5. Confirm the **Web Switcher** card appears and is enabled. Check that Chrome shows no extension errors. Version 0.2.2 adds `webNavigation`; Chrome may display a browsing-history warning. This build uses browser-owned transition metadata for its own local gates to distinguish new visits from redirect returns. It does not read the history database or retain unrelated browsing history. Review the [privacy policy](privacy.html).
 6. Click Chrome's puzzle-piece **Extensions** menu and pin Web Switcher.
 7. Click its icon, then **Find current address**. The options page can prefill the current tab's origin. Alternatively use the extension card's **Details → Extension options**.
 8. In **Old website address**, enter only the old address you know. A full URL is accepted, but its path/query/fragment are discarded before the root check. **Do not enter a new destination.**
@@ -73,14 +73,22 @@ The user-supplied `vegamovies.rs` → `new1.vegamovies.lease` pair is an illustr
 5. Read each candidate's origin, dated source evidence and unverified status. A historical capture is evidence of a past claim, not proof of current ownership, identity or availability.
 6. Choose the candidate's **Check this address** action and grant its origin if Chrome asks. If its live declarations lead to a further origin, continue only after granting that displayed next-origin access. A live check may find a later successor or fail; it does not promote identity trust.
 7. After reviewing the checked current address, choose **Open checked address**. The extension rechecks before opening the homepage. It never automatically opens the top search/archive result.
-8. If you explicitly want to reuse that selection, choose the candidate's **Remember this choice for 24 hours** option and choose **Remember checked choice**. This creates a reversible, expiring **user-configured** homepage override, not an owner/registry-verified record. No replacement address needs to be typed. Remove the override from saved mappings when no longer wanted.
+8. If you explicitly want to reuse that selection, choose the candidate's **Remember this choice for 24 hours** option and choose **Remember checked choice**. This creates a reversible, expiring **user-configured** homepage override, not an owner/registry-verified record. No replacement address needs to be typed. If you later check that the sites use matching public page paths, choose **Keep page paths** on the saved mapping; that choice does not verify the relationship or renew its expiry. Remove the override from saved mappings when no longer wanted.
 9. For broader web-search results, configure an optional operator-provided HTTPS discovery service and your individual access token under **Optional discovery service**, then choose **Save service settings**. This is not required for keyless archive mode. The provider key belongs only on that service, never in an extension package or a chat message. Follow [the operation guide](INTERNET_DISCOVERY_OPERATION.md).
 
 The actual labels follow the installed build; use the candidate evidence and current-check actions rather than assuming its first result is genuine. Search/archive candidates are not automatically imported as locally observed migration edges. Existing signed-source reservations continue to block weaker online-derived routes at the source, intermediates and terminal.
 
 ### Optional manual-override smoke test
 
-For a quick check of the secondary manual feature, temporarily map `https://example.com` to `https://example.org` in the manual form, using homepage mode/24-hour validity after inspecting the destination and granting source access. Visiting `https://example.com/hello?demo=1#section` should open `https://example.org/`. This is a user-selected test, **not a claim these sites migrated**, and it does not demonstrate automatic discovery. Remove it afterwards so it cannot override an automatic continuity check for the same source.
+For a quick check of the secondary manual feature, temporarily map `https://example.com` to `https://example.org` in the manual form after inspecting the destination and granting source access. New manual mappings default to **Keep its page path**. With that choice and 24-hour validity, visiting `https://example.com/hello?demo=1#section` should request `https://example.org/hello`; the destination may not have that page. Choosing **Open the homepage** should instead open `https://example.org/`. This is a user-selected test, **not a claim these sites migrated**, and it does not demonstrate automatic discovery. Remove it afterwards so it cannot override an automatic continuity check for the same source.
+
+### Keep the page when a mapped domain changes
+
+Use **Keep its page path** for a known destination that uses the same public page paths. For example, mapping `https://old-site.com` to `https://current-site.com` with this policy turns `/download-invincible-hindi-dubbed-series/` into that same path on `current-site.com`, including its trailing slash. Queries and fragments are removed. The extension cannot guarantee the new site still serves that page or translate renamed article paths.
+
+For an existing mapping that says **Opens homepage**, click **Keep page paths** on its saved card. Click **Open homepage only** to reverse that choice. The update preserves the saved destination, expiry and user-configured provenance; it does not re-verify the website. Existing choices are never silently changed by an extension update. Inferred automatic following and newly remembered Internet selections still start with homepage-only behavior.
+
+An ordinary compatible page link proceeds automatically after the local current-policy check. Sensitive paths such as account/download endpoints, token-bearing queries and ambiguous encoded paths can still require homepage-only confirmation. A title slug beginning `download-` is not itself the `/download` endpoint.
 
 The distributed build intentionally rejects localhost, IP literals, custom ports and reserved fixture hosts such as `.test`. Never enable fixture mode for ordinary use or a Store package. Unknown sites are not silently guessed or switched.
 
@@ -98,16 +106,16 @@ The distributed build intentionally rejects localhost, IP literals, custom ports
 ### Update an existing unpacked installation without losing its settings
 
 1. In Web Switcher settings, choose **Export settings** and save the backup. It backs up manual mappings; followed-site enrollment and learned history are not part of that export.
-2. Download a successful **0.2.1 or later** build as above, or update your source checkout and run `npm ci`, `npm run check` and `npm run package`.
+2. Download a successful **0.2.2 or later** build as above, or update your source checkout and run `npm ci`, `npm run check` and `npm run package`.
 3. Keep the same installed extension folder. Replace its built files with the new extension contents, including `manifest.json`, `background.js` and the other packaged files. For an installation already loaded from `dist/web-switcher/`, rebuilding updates that same folder. Do not remove the extension or load the outer artifact ZIP.
-4. Open `chrome://extensions`, find Web Switcher and click **Reload**. Check its displayed version and any errors. Merely copying files does not update the running worker or open extension pages.
+4. Open `chrome://extensions`, find Web Switcher and click **Reload**. Check that it shows **0.2.2** or the newer version you installed, review any new permission prompt, and inspect errors. Chrome may show a browsing-history warning for the new `webNavigation` permission; the limited local-gate processing is explained above. Merely copying files does not update the running worker or open extension pages.
 5. Close old gate/options/popup pages, then **reopen the original website URL**. A gate removes the original envelope from its address for privacy, so reloading the bare `route.html` page cannot reconstruct the original request. Your existing valid mappings should still appear; inspect them before testing.
 
 ### “Switch paused” after a recent switch
 
-The manual/signed mapping gate uses a **15-second per-tab guard**, keyed by the local mapping or the signed website family. A deliberate second visit in the same tab can trigger it even when the destination has not redirected back. The warning alone therefore does not prove a redirect loop.
+Version 0.2.2 uses browser-owned navigation metadata for its own packaged gate. Ordinary fresh address-bar and link visits can proceed automatically even after a recent switch. Automatic redirect returns remain guarded. A missing or unsupported navigation classification falls back to the conservative guard, and a separate cap allows at most **six accepted automatic switches per tab and mapping/family in 15 seconds**. The warning can therefore indicate a redirect return, rapid repeated switching or unavailable navigation metadata; it does not by itself prove a destination bounce.
 
-In version 0.2.1 or later, review the exact destination homepage displayed on that gate. If it is the destination you intend, choose **Open destination homepage once**. This explicit action rechecks the current mapping, source permission, generation and expiry, using a one-use token tied to that gate document. It opens only the saved homepage and strips the old path, query and fragment. The automatic guard remains active: if the destination redirects back to an old address, that next automatic switch is stopped again. No recovery navigation happens without your click.
+If the gate remains paused, review its exact displayed mapped address. Choose **Open mapped page once** if the current policy permits that public page path, or **Open destination homepage once** for a homepage-only choice. The explicit action rechecks the current mapping, source permission, generation, expiry and exact target using a two-minute, single-use token tied to that gate document. It respects the saved path policy, always removes query/fragment data and preserves homepage-only restrictions for sensitive/ambiguous links. The automatic guard remains active: if the destination redirects back to an old address, that next automatic switch is stopped again. No recovery navigation happens without your click.
 
 If the warning returns immediately after the click, recheck whether the saved destination is current and whether it points back to the old site. Update the mapping only after checking the intended destination; do not repeatedly bypass a real bounce. If settings or access changed while the gate was open, reopen the original URL and review the current policy. The reported public source/destination pair has not been verified in this managed environment because its egress policy does not permit those hosts; controlled browser fixtures exercise the recovery behavior separately.
 
@@ -121,7 +129,7 @@ An optional registry build additionally needs a real HTTPS catalog endpoint, rev
 
 | Item | Location / action |
 | --- | --- |
-| Upload package | `dist/web-switcher-0.2.1.zip` from a successful new build, or the matching filename of a later manifest version. `manifest.json` is at its root. Upload this inner ZIP, not the entire repository/artifact. |
+| Upload package | `dist/web-switcher-0.2.2.zip` from a successful new build, or the matching filename of a later manifest version. `manifest.json` is at its root. Upload this inner ZIP, not the entire repository/artifact. |
 | Extension icons | `extension/icons/icon-16.png`, `icon-32.png`, `icon-48.png`, `icon-128.png`; manifest references included. Packaged ZIP contains them. |
 | Store icon | Upload the supplied `extension/icons/icon-128.png` if the dashboard asks for it separately. |
 | Required small promotional tile | [440×280 PNG](store-assets/small-promo-440x280.png). In GitHub use the image's **Download raw file** button; do not save the surrounding GitHub HTML. |
@@ -162,8 +170,8 @@ Official references: [registration](https://developer.chrome.com/docs/webstore/r
 
 ## 7. Create the Store listing and upload
 
-1. In the dashboard click **New item** and upload `web-switcher-0.2.1.zip` from the successful build you inspected, or its later-version equivalent.
-2. Confirm it detects **Web Switcher**, Manifest V3, version **0.2.1** (or the manifest version you intentionally built). Fix any validation error before continuing.
+1. In the dashboard click **New item** and upload `web-switcher-0.2.2.zip` from the successful build you inspected, or its later-version equivalent.
+2. Confirm it detects **Web Switcher**, Manifest V3, version **0.2.2** (or the manifest version you intentionally built). Fix any validation error before continuing.
 3. Fill the title, language and suitable available category; add the actual support URL, such as this repository's Issues page, and your verified contact information.
 4. Upload the supplied 128×128 icon and 440×280 tile, plus at least one real screenshot from section 4. Complete any other image fields marked required by the current dashboard.
 5. Use accurate listing copy. Suggested short description:
@@ -184,6 +192,7 @@ Official references: [registration](https://developer.chrome.com/docs/webstore/r
 | `activeTab` | Read the current tab's origin after the user invokes the popup, to prefill its old address and show relevant following/override controls. |
 | `alarms` | Run maintenance for expired routing state and bounded retained activity. |
 | `webRequest` | Read redirect/refresh and archive-replay response headers for the extension's own active, correlated requests while Fetch is in manual-redirect mode. This lets it inspect explicit next-hop/archive evidence before another bounded request. Unrelated browsing requests are ignored and are not recorded. |
+| `webNavigation` | Handle committed top-level navigation metadata for the extension's own packaged gates, so a fresh typed/link visit is not mistaken for a recent redirect return. The one-use session classification is bound to its gate document and lasts at most two minutes. It excludes unrelated website URLs/history; Chrome may nevertheless display a browsing-history permission warning. The extension does not use the `history` API. |
 | Optional `http://*/*`, `https://*/*` | Selected-source/next-origin permissions support chosen checks and manual mappings. A public-source lookup requests the fixed archive.org and web.archive.org origins; an optional configured service requests its exact HTTPS origin. Candidate-origin access is requested before checking it. By default, permissions are requested at user gestures. A separate unchecked-by-default option explicitly requests all-HTTPS access for selected chains. No all-sites grant is installed by default; broad access does not enroll every site or enable general browsing-history collection. |
 | Fixed registry host, if using a custom registry build | Retrieve a signed catalog from that exact configured HTTPS endpoint. Omit this claim for the default build, which has no registry endpoint. |
 
@@ -231,7 +240,7 @@ Before submission, perform those steps yourself in a clean Chrome profile. Test 
 ## 10. Publish updates later
 
 1. Export your own settings and retain the previous source/ZIP before changing behavior.
-2. Increase `version` in `extension/manifest.json` to a higher valid Chrome numeric version, such as `0.2.2` after the current `0.2.1`. Keep release metadata consistent where applicable; Google's update decision uses the manifest version, not the ZIP filename.
+2. Increase `version` in `extension/manifest.json` to a higher valid Chrome numeric version, such as `0.2.3` after the current `0.2.2`. Keep release metadata consistent where applicable; Google's update decision uses the manifest version, not the ZIP filename.
 3. Run `npm test`, `npm run check`, `npm run package`; inspect and load the new output in a separate test profile. The packaging script reads the manifest version and creates `dist/web-switcher-<version>.zip`, with `manifest.json` directly at its root. Older 0.2.0 artifacts remain historical builds and do not acquire later fixes when downloaded again.
 4. Upload the ZIP as a **new package to the same existing Store item**, not as a new listing. Review permission changes, update screenshots/policy where necessary, and submit for review. [Official update instructions](https://developer.chrome.com/docs/webstore/update).
 5. Store-managed installations receive approved updates through Chrome's update mechanism; unplugged source folders do not update automatically. For unpacked installations, rebuild/replace files in the same folder and click Reload.
@@ -248,7 +257,8 @@ Before submission, perform those steps yourself in a clean Chrome profile. Test 
 | `.test`, localhost or custom port rejected | Intentional production restriction. Use real public HTTPS origins for discovery; the example.com manual test is a separate secondary feature. |
 | Expired mapping | Independently recheck destination, remove/re-add; do not bypass expiry. |
 | Destination blocked/confirmation page | Review the reason. Sensitive/ambiguous paths intentionally need explicit confirmation; homepage mode is the safest first test. |
-| “Switch paused” says a recent switch was stopped | A second same-tab mapping/family attempt within 15 seconds can trigger the guard. In 0.2.1 or later, inspect the shown homepage and choose **Open destination homepage once** only if intended. This revalidates policy, strips the old URL details and preserves automatic protection. An immediate repeat warning can indicate the destination returns to an old address; recheck the mapping. |
+| Mapped link opens only the base homepage | On the exact source origin's saved card, choose **Keep page paths**, or select **Keep its page path** when creating it. Existing homepage choices are not silently converted by an update. A page must still exist at the same path on the destination. |
+| “Switch paused” says a recent switch was stopped | Use 0.2.2 or later for fresh address-bar/link handling. A returned redirect, more than six rapid accepted switches, or unavailable navigation metadata can still pause routing. Inspect the displayed target and choose **Open mapped page once** or **Open destination homepage once** only if intended. A repeated immediate return requires checking the destination relationship. |
 | Changes not taking effect | Back up with Export settings, replace built files in the same installed folder, then Reload at `chrome://extensions`. Close old extension pages and reopen the original website URL; reloading a stripped gate URL cannot restore its request envelope. Do not remove the installation just to update it. |
 | Browser says administrator blocked it | Use an authorized profile/device or administrator-supported installation. |
 | Store icon/image error | Use provided PNG assets, correct dimensions, real screenshots and the inner extension ZIP. SVG alone is not the Store's required PNG icon. |

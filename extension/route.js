@@ -9,7 +9,7 @@ const descriptions = {
   confirmation: 'This registry-reviewed move requires your confirmation. Check the destination below. Verification of a relationship is not a guarantee that a website is safe.',
   manual: 'This link may contain account information, a download, or an ambiguous path. You can choose the saved destination homepage without transferring the original path or parameters.',
   permission: 'Access to this source origin is no longer granted.',
-  loop: 'This tab used this mapping recently. The destination may have sent you back, or you may have opened another old link. Automatic switching is paused to prevent a loop. If you intended another visit, check the saved address and open its homepage once.'
+  loop: 'A redirect returned to an old address, too many switches happened quickly, or this browser could not confirm a fresh navigation. Automatic switching is paused to prevent a loop. Check the mapped address below before opening it once.'
 };
 document.querySelector('#manage').addEventListener('click', () => chrome.runtime.openOptionsPage());
 function showPaused(result, envelope) {
@@ -24,18 +24,19 @@ function showPaused(result, envelope) {
   preview.textContent = '';
   const retry = result.reason === 'loop' && typeof result.retryToken === 'string';
   if (!result.homepage || (!retry && !['manual', 'confirmation'].includes(result.reason))) return;
-  preview.textContent = result.homepage;
+  const targetUrl = retry ? result.retryUrl || result.homepage : result.homepage;
+  preview.textContent = targetUrl;
   preview.hidden = false;
-  button.textContent = retry ? 'Open destination homepage once' : result.reason === 'confirmation' ? 'Open reviewed destination' : 'Open destination homepage';
+  button.textContent = retry ? targetUrl === result.homepage ? 'Open destination homepage once' : 'Open mapped page once' : result.reason === 'confirmation' ? 'Open reviewed destination' : 'Open destination homepage';
   button.disabled = false;
   button.hidden = false;
   button.onclick = async () => {
     button.disabled = true;
     button.onclick = null;
     try {
-      const checked = await chrome.runtime.sendMessage({type: retry ? 'retryRoute' : 'confirmRoute', envelope, expectedUrl: result.homepage, ...(retry ? {retryToken: result.retryToken} : {})});
+      const checked = await chrome.runtime.sendMessage({type: retry ? 'retryRoute' : 'confirmRoute', envelope, expectedUrl: targetUrl, ...(retry ? {retryToken: result.retryToken} : {})});
       if (!checked?.ok) throw new Error();
-      if (checked.data?.status === 'ready' && checked.data.url === result.homepage) location.replace(checked.data.url);
+      if (checked.data?.status === 'ready' && checked.data.url === targetUrl) location.replace(checked.data.url);
       else if (checked.data?.reason === 'loop') showPaused(checked.data, envelope);
       else throw new Error();
     } catch {

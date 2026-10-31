@@ -98,6 +98,13 @@ async function render() {
       await request({type: 'toggle', id: mapping.id, enabled: mapping.enabled});
     }));
     if (!expired) controls.append(action(mapping.enabled ? 'Pause' : 'Enable', () => request({type: 'toggle', id: mapping.id, enabled: !mapping.enabled})));
+    if (!expired) controls.append(action(mapping.pathPolicy === 'preserve' ? 'Open homepage only' : 'Keep page paths', async () => {
+      const pathPolicy = mapping.pathPolicy === 'preserve' ? 'homepage' : 'preserve';
+      await request({type: 'setPathPolicy', id: mapping.id, pathPolicy, generation: config.generation});
+      announce(pathPolicy === 'preserve'
+        ? 'Mapping updated. Ordinary page links keep their page path on the saved domain; queries and fragments are removed.'
+        : 'Mapping updated. Links open the saved destination homepage.');
+    }));
     controls.append(action('Open homepage', () => chrome.tabs.create({url: mapping.destinationOrigin + '/'})));
     controls.append(action('Remove', async () => {
       await request({type: 'remove', id: mapping.id});

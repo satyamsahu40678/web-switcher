@@ -1,6 +1,16 @@
 # Implementation status and evidence
 
-Updated 30 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+Updated 31 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+
+## Mapped page paths and ordinary navigation — 31 October 2026
+
+Extension development version **0.2.2** makes new manual mappings default to **Keep its page path** and adds **Keep page paths** / **Open homepage only** actions to existing mappings. Existing choices are not silently changed. Changing link behavior replaces the current DNR generation without renewing the mapping's expiry or altering its destination. Compatible public slugs such as `/download-invincible-hindi-dubbed-series/` now remain intact in an explicitly path-preserving mapping; query and fragment data are removed, and sensitive/ambiguous URLs still require review. This cannot establish that a page exists at a third-party destination.
+
+The loop guard consumes browser-owned `webNavigation` transition metadata bound to the exact packaged gate document. Fresh ordinary navigations can proceed without the previous false pause, while client-redirect returns retain the guard. A separate ceiling of six accepted switches per 15 seconds per tab/mapping or signed family bounds ambiguous programmatic link bursts. Missing, unknown or stale metadata retains the conservative guard. The one-time recovery action now preserves the recomputed safe mapped page for a preserve mapping, while homepage and sensitive-link policies remain homepage-only. Rapid switches use unique nonfuture receipt timestamps so valid recent activity/undo references are not immediately pruned.
+
+Local validation: **302 Node/JavaScript tests passed**, zero failures/skips, including nine navigation-metadata tests, worker-level ordinary typed/link visits, one-time document consumption and late-event refusal, burst limits, deterministic same-millisecond activity retention, settings-generation invalidation, preserved expiry/identity, and existing signed-family/permission/expiry checks. Manifest/syntax/package inspection passed for `web-switcher-0.2.2.zip`. Native Chromium regressions cover repeated public article paths, real anchor clicks, destination reload, HTTP/JavaScript return loops, mapping-mode changes and path-preserving recovery; exact-source execution belongs to the fix PR's hosted checks.
+
+`webNavigation` is an additional declared permission. The code ignores unrelated commits and retains no general browsing-history log; the short-lived gate records contain only document identity/classification and time. Pending recovery and undo references can hold the chosen destination URL in session storage for up to two minutes; persistent activity remains origin-only. See the updated [privacy disclosure](privacy.html) and [installation/Store guide](CHROME_INSTALL_AND_STORE.md). The cloud's provider-host policy is now enforced, but no public-domain ownership, actual destination page compatibility or live-provider effectiveness is asserted by these controlled tests.
 
 ## Loop-gate recovery — 30 October 2026
 

@@ -31,13 +31,13 @@ Manual old→new mappings remain available as secondary explicit overrides. Sign
 - **First-use Internet discovery:** keyless public archive availability/CDX/snapshot investigation, inert historical redirect/metadata/announcement extraction, explained candidates, cancellation, expiring local jobs and fresh browser checks. No local history or typed destination is required.
 - **Optional Internet search service:** separate dependency-free Node 24/SQLite service with a real Brave API adapter, shared archive adapter, authenticated owner-scoped jobs, durable phase leases/quotas/bytes, cancellation, caching and coherent backups. Missing credentials or providers produce explicit partial/unavailable results. Search cannot publish a signed route.
 - **Local control:** per-origin optional grants, optional broader HTTPS discovery consent, pause, forget, clear data, minimal receipts and bounded tab undo. No account or publisher telemetry is required.
-- **Manual mappings:** exact source/destination overrides, expiry, path policy, strict import/export and validation gate.
+- **Manual mappings:** exact source/destination overrides, expiry, page-path preservation by default for new manual choices, an existing-mapping path/homepage control, strict import/export and validation gate.
 - **Signed registry:** ES256, closed schemas, expiry, rollback/equivocation protection, reviewed public-path policies and family withdrawal. No production trust root is bundled.
 - **Java API / React admin:** PostgreSQL persistence, hostname-only lookups/reports, separate review/publication, CSRF/OIDC, immutable releases and audit. Public reports cannot publish a route.
 - **Optional server observation:** isolated authenticated fetcher with HTTP/meta successor resolution, public-DNS/address/socket checks, HTTPS/robots/resource bounds; a separate keyless queue worker still submits unverified candidates for moderation. It is not required for the browser's local discovery.
 - **Experimental owner tools:** offline key generation and record signing/verification. Live enrollment, domain-control bootstrap and key recovery are not complete.
 
-This is the reconstructed development platform with extension version **0.2.1**, not a public deployment or approved browser-store release. See [implementation evidence](docs/IMPLEMENTATION_STATUS.md), [all 134 original plan IDs](docs/PLAN_TRACEABILITY.md) and [novelty/prior-art limits](docs/NOVELTY_AND_EVIDENCE.md). The original [research plan](docs/WEB_SWITCHER_PLAN.md) remains a historical roadmap.
+This is the reconstructed development platform with extension version **0.2.2**, not a public deployment or approved browser-store release. See [implementation evidence](docs/IMPLEMENTATION_STATUS.md), [all 134 original plan IDs](docs/PLAN_TRACEABILITY.md) and [novelty/prior-art limits](docs/NOVELTY_AND_EVIDENCE.md). The original [research plan](docs/WEB_SWITCHER_PLAN.md) remains a historical roadmap.
 
 ## Install or build the extension
 
@@ -52,7 +52,9 @@ npm run check
 npm run package
 ~~~
 
-Load the resulting dist/web-switcher directory at chrome://extensions → Developer mode → Load unpacked. The ZIP is dist/web-switcher-0.2.1.zip; extract it before loading. The normal build has fixture mode disabled and no pregranted source access. For an existing installation, follow the guide's same-folder update steps and click **Reload** at chrome://extensions. A recently used mapping can pause a deliberate repeat visit; its loop screen now offers **Open destination homepage once**, with automatic loop protection retained.
+Load the resulting dist/web-switcher directory at chrome://extensions → Developer mode → Load unpacked. The ZIP is dist/web-switcher-0.2.2.zip; extract it before loading. The normal build has fixture mode disabled and no pregranted source access. For an existing installation, follow the guide's same-folder update steps and click **Reload** at chrome://extensions. Version 0.2.2 uses the browser's `webNavigation` metadata for its own local gates to distinguish ordinary new visits from redirect returns; Chrome may show a browsing-history permission warning, but the extension does not read the history database or retain unrelated browsing history.
+
+For a known domain change with matching public page paths, choose **Keep its page path** when creating a manual mapping. For an existing homepage mapping, choose **Keep page paths** on its saved card. A link such as `https://old-site.com/download-invincible-hindi-dubbed-series/` then opens that same path on the mapped domain. Ordinary eligible visits proceed automatically. Queries/fragments are removed, sensitive links still require review, and a page can still be missing on the destination. Existing path choices and expiry are preserved unless you explicitly change them; inferred discoveries remain homepage-only by default. A remaining loop warning offers **Open mapped page once** when current policy permits that public path, while retaining redirect-loop protection.
 
 A custom signed-registry build additionally needs both WS_REGISTRY_KEYS_FILE (a reviewed kid→public ES256 JWK map) and WS_REGISTRY_URL (an owned fixed HTTPS catalog endpoint) when packaging. Private signing material and demo roots never belong in a distributed extension. Local continuity works without that configuration.
 
