@@ -5,9 +5,9 @@
 ## 1. Get the extension without installing development tools
 
 1. Sign in to GitHub and open [this repository's Actions](https://github.com/satyamsahu40678/web-switcher/actions/workflows/platform.yml).
-2. Select the latest **successful** `Web Switcher platform` run for branch `feat/web-switcher-platform`. Choose a run containing the Internet-discovery change or a later one; earlier packages may support only local mappings or direct/remembered chains and will not contain Search public sources. A running/failed run is not the release artifact to use.
+2. Select the latest **successful** `Web Switcher platform` run for branch `feat/web-switcher-platform`. For the loop-recovery update, choose a run packaging version **0.2.1** or later. Earlier 0.2.0 artifacts do not contain that recovery action, and still older packages may lack Search public sources. A running/failed run is not the release artifact to use.
 3. Scroll to **Artifacts** and download **web-switcher-development-packages**. GitHub may require you to sign in before downloading artifacts.
-4. Extract that downloaded artifact ZIP. Inside it find `dist/web-switcher-0.2.0.zip`. The artifact also contains web application files; those are not the browser extension.
+4. Extract that downloaded artifact ZIP. Inside it find `dist/web-switcher-0.2.1.zip` (or the matching version of a later successful build). The artifact also contains web application files; those are not the browser extension.
 5. Extract **that inner extension ZIP** into a permanent folder on your computer, such as `Documents/WebSwitcher`. Its top level must contain `manifest.json`, `background.js`, `options.html` and `icons/`.
 6. Keep this folder in place while using an unpacked installation. Do not select the repository root, `apps/web`, the outer artifact ZIP or an unextracted ZIP in Chrome.
 
@@ -26,7 +26,7 @@ npm run check
 npm run package
 ```
 
-Load `dist/web-switcher/`. The upload ZIP is `dist/web-switcher-0.2.0.zip`.
+Load `dist/web-switcher/`. The current development upload ZIP is `dist/web-switcher-0.2.1.zip`; its filename follows `extension/manifest.json`'s version.
 
 On Windows, the artifact download is the easiest method. For source builds, use WSL with the commands above, or ensure the command `python3 --version` works in your terminal: the packaging script invokes `python3`, not `py`. Java and the React application are unnecessary for extension-only builds. The checked-in PNG assets require no regeneration; optional regeneration is `CHROMIUM_PATH=/path/to/chromium node scripts/store-assets.mjs` with the locked Playwright dependency/browser available.
 
@@ -95,6 +95,22 @@ The distributed build intentionally rejects localhost, IP literals, custom ports
 - Keep the same installation/folder for updates where possible. Removing an extension can delete its local settings; export first. Store and unpacked copies usually have different IDs/storage—export/import when switching, and disable the other copy to prevent competing rules.
 - Incognito is off by default. If intentionally testing it, grant **Allow in incognito** under Details and review the privacy implications.
 
+### Update an existing unpacked installation without losing its settings
+
+1. In Web Switcher settings, choose **Export settings** and save the backup. It backs up manual mappings; followed-site enrollment and learned history are not part of that export.
+2. Download a successful **0.2.1 or later** build as above, or update your source checkout and run `npm ci`, `npm run check` and `npm run package`.
+3. Keep the same installed extension folder. Replace its built files with the new extension contents, including `manifest.json`, `background.js` and the other packaged files. For an installation already loaded from `dist/web-switcher/`, rebuilding updates that same folder. Do not remove the extension or load the outer artifact ZIP.
+4. Open `chrome://extensions`, find Web Switcher and click **Reload**. Check its displayed version and any errors. Merely copying files does not update the running worker or open extension pages.
+5. Close old gate/options/popup pages, then **reopen the original website URL**. A gate removes the original envelope from its address for privacy, so reloading the bare `route.html` page cannot reconstruct the original request. Your existing valid mappings should still appear; inspect them before testing.
+
+### “Switch paused” after a recent switch
+
+The manual/signed mapping gate uses a **15-second per-tab guard**, keyed by the local mapping or the signed website family. A deliberate second visit in the same tab can trigger it even when the destination has not redirected back. The warning alone therefore does not prove a redirect loop.
+
+In version 0.2.1 or later, review the exact destination homepage displayed on that gate. If it is the destination you intend, choose **Open destination homepage once**. This explicit action rechecks the current mapping, source permission, generation and expiry, using a one-use token tied to that gate document. It opens only the saved homepage and strips the old path, query and fragment. The automatic guard remains active: if the destination redirects back to an old address, that next automatic switch is stopped again. No recovery navigation happens without your click.
+
+If the warning returns immediately after the click, recheck whether the saved destination is current and whether it points back to the old site. Update the mapping only after checking the intended destination; do not repeatedly bypass a real bounce. If settings or access changed while the gate was open, reopen the original URL and review the current policy. The reported public source/destination pair has not been verified in this managed environment because its egress policy does not permit those hosts; controlled browser fixtures exercise the recovery behavior separately.
+
 ## 3. Choose what to publish
 
 **Recommended first Store version: the default browser extension with direct continuity and keyless public-archive discovery.** Its main input is an old address; direct signals and local memory are the first path, and explicitly requested archive investigation can find candidate successors without local history. No backend hosting or remote registry trust anchor is required for those paths. Broader search uses an optional separately operated service. Manual mappings remain secondary explicit choices. Do not advertise universal recovery, execution of arbitrary site scripts or independent owner verification.
@@ -105,7 +121,7 @@ An optional registry build additionally needs a real HTTPS catalog endpoint, rev
 
 | Item | Location / action |
 | --- | --- |
-| Upload package | `dist/web-switcher-0.2.0.zip` from a successful new build. `manifest.json` is at its root. Upload this inner ZIP, not the entire repository/artifact. |
+| Upload package | `dist/web-switcher-0.2.1.zip` from a successful new build, or the matching filename of a later manifest version. `manifest.json` is at its root. Upload this inner ZIP, not the entire repository/artifact. |
 | Extension icons | `extension/icons/icon-16.png`, `icon-32.png`, `icon-48.png`, `icon-128.png`; manifest references included. Packaged ZIP contains them. |
 | Store icon | Upload the supplied `extension/icons/icon-128.png` if the dashboard asks for it separately. |
 | Required small promotional tile | [440×280 PNG](store-assets/small-promo-440x280.png). In GitHub use the image's **Download raw file** button; do not save the surrounding GitHub HTML. |
@@ -146,8 +162,8 @@ Official references: [registration](https://developer.chrome.com/docs/webstore/r
 
 ## 7. Create the Store listing and upload
 
-1. In the dashboard click **New item** and upload `web-switcher-0.2.0.zip`.
-2. Confirm it detects **Web Switcher**, Manifest V3, version **0.2.0**. Fix any validation error before continuing.
+1. In the dashboard click **New item** and upload `web-switcher-0.2.1.zip` from the successful build you inspected, or its later-version equivalent.
+2. Confirm it detects **Web Switcher**, Manifest V3, version **0.2.1** (or the manifest version you intentionally built). Fix any validation error before continuing.
 3. Fill the title, language and suitable available category; add the actual support URL, such as this repository's Issues page, and your verified contact information.
 4. Upload the supplied 128×128 icon and 440×280 tile, plus at least one real screenshot from section 4. Complete any other image fields marked required by the current dashboard.
 5. Use accurate listing copy. Suggested short description:
@@ -215,8 +231,8 @@ Before submission, perform those steps yourself in a clean Chrome profile. Test 
 ## 10. Publish updates later
 
 1. Export your own settings and retain the previous source/ZIP before changing behavior.
-2. Increase `version` in `extension/manifest.json` to a higher valid Chrome numeric version, such as `0.2.1`. Keep release metadata consistent where applicable; Google's update decision uses the manifest version, not the ZIP filename.
-3. Run `npm test`, `npm run check`, `npm run package`; inspect and load the new output in a separate test profile. Currently the packaging script names its output `web-switcher-0.2.0.zip`; that filename does not set the manifest version. Rename the output for your own organization if desired, without nesting its contents.
+2. Increase `version` in `extension/manifest.json` to a higher valid Chrome numeric version, such as `0.2.2` after the current `0.2.1`. Keep release metadata consistent where applicable; Google's update decision uses the manifest version, not the ZIP filename.
+3. Run `npm test`, `npm run check`, `npm run package`; inspect and load the new output in a separate test profile. The packaging script reads the manifest version and creates `dist/web-switcher-<version>.zip`, with `manifest.json` directly at its root. Older 0.2.0 artifacts remain historical builds and do not acquire later fixes when downloaded again.
 4. Upload the ZIP as a **new package to the same existing Store item**, not as a new listing. Review permission changes, update screenshots/policy where necessary, and submit for review. [Official update instructions](https://developer.chrome.com/docs/webstore/update).
 5. Store-managed installations receive approved updates through Chrome's update mechanism; unplugged source folders do not update automatically. For unpacked installations, rebuild/replace files in the same folder and click Reload.
 
@@ -232,7 +248,8 @@ Before submission, perform those steps yourself in a clean Chrome profile. Test 
 | `.test`, localhost or custom port rejected | Intentional production restriction. Use real public HTTPS origins for discovery; the example.com manual test is a separate secondary feature. |
 | Expired mapping | Independently recheck destination, remove/re-add; do not bypass expiry. |
 | Destination blocked/confirmation page | Review the reason. Sensitive/ambiguous paths intentionally need explicit confirmation; homepage mode is the safest first test. |
-| Changes not taking effect | Reload at `chrome://extensions`; close old gate/popup pages and retry in a new tab. |
+| “Switch paused” says a recent switch was stopped | A second same-tab mapping/family attempt within 15 seconds can trigger the guard. In 0.2.1 or later, inspect the shown homepage and choose **Open destination homepage once** only if intended. This revalidates policy, strips the old URL details and preserves automatic protection. An immediate repeat warning can indicate the destination returns to an old address; recheck the mapping. |
+| Changes not taking effect | Back up with Export settings, replace built files in the same installed folder, then Reload at `chrome://extensions`. Close old extension pages and reopen the original website URL; reloading a stripped gate URL cannot restore its request envelope. Do not remove the installation just to update it. |
 | Browser says administrator blocked it | Use an authorized profile/device or administrator-supported installation. |
 | Store icon/image error | Use provided PNG assets, correct dimensions, real screenshots and the inner extension ZIP. SVG alone is not the Store's required PNG icon. |
 | Artifact unavailable | Sign in to GitHub, choose a completed successful run, or build from source. Artifacts have finite retention. |

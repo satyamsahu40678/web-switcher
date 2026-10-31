@@ -1,6 +1,12 @@
 # Implementation status and evidence
 
-Updated 29 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+Updated 30 October 2026 (Asia/Kolkata). This file supersedes historical prototype statements only where fresh evidence is recorded below. The original [complete plan](WEB_SWITCHER_PLAN.md), [prototype status](PROTOTYPE_STATUS.md), and prototype ADR remain preserved historical documents.
+
+## Loop-gate recovery — 30 October 2026
+
+Extension development version **0.2.1** adds explicit recovery from the conservative 15-second per-tab mapping/family guard. That guard can pause a deliberate second visit as well as an actual destination bounce. The screen now explains both possibilities, shows the current saved homepage and offers **Open destination homepage once**. A short-lived, single-use authorization binds the exact gate document, tab, source, mapping/family and homepage. Clicking recomputes current policy and permissions, consumes the authorization and renews automatic loop protection; it never forwards the old path, query or fragment. No new browser permission is added.
+
+All **287 Node/JavaScript tests passed locally**, with zero failures/skips, including concurrent/replayed/forged recovery actions, tab/document separation, expiry, permission and policy invalidation, and signed sibling aliases. Manifest/syntax/package checks passed; packaging now uses the manifest version in the ZIP filename. Three native Chromium regression groups cover the reported deep-link shape with a homepage mapping, a real controlled HTTP redirect back into a different old path, and policy changes while the gate is open. The browser workflow runs these alongside existing suites; consult the fix PR's checks for exact-source hosted evidence. See [installation and troubleshooting](CHROME_INSTALL_AND_STORE.md) for updating an existing unpacked installation. The reported public domains' current behavior has not been verified.
 
 ## Internet-discovery implementation — 29 October 2026
 

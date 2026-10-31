@@ -28,6 +28,7 @@ let context;
 let worker;
 let extensionId;
 let browserVersion;
+let bounceHomepage = false;
 const server = http.createServer((req, res) => {
   hits.push({host: req.headers.host, method: req.method, path: req.url, referrer: req.headers.referer || null});
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -36,6 +37,10 @@ const server = http.createServer((req, res) => {
     res.end(`<form method="post" action="http://old.test:${port}/submit"><input name="value" value="fixture"><button>Send</button></form>`);
   } else if (req.url === '/iframe') {
     res.end(`<iframe title="fixture" src="http://old.test:${port}/frame"></iframe>`);
+  } else if (req.headers.host.startsWith('new.test:') && req.url === '/' && bounceHomepage) {
+    res.statusCode = 302;
+    res.setHeader('Location', `http://old.test:${port}/different-old-path-after-retry`);
+    res.end();
   } else if (req.headers.host.startsWith('new.test:') && req.url === '/bounce') {
     res.statusCode = 302;
     res.setHeader('Location', `http://old.test:${port}/return`);
@@ -183,6 +188,94 @@ try {
     const page = await freshPage();
     await navigate(page, `${sourceOrigin}/bounce`);
     await expectBlocked(page, 'loop');
+  });
+  await check('B14a_deliberate_same_tab_retry_opens_only_saved_homepage', async () => {
+    const homepage = structuredClone(baseline);
+    homepage.mappings[0].pathPolicy = 'homepage';
+    await writeConfig(homepage);
+    const page = await freshPage();
+    const oldLink = `${sourceOrigin}/download-peaky-blinders-the-immortal-man-2026-hindi-dubbed-org-english-480p-720p-1080p/?source=synthetic#private`;
+    try {
+      await navigate(page, oldLink);
+      await page.waitForURL(targetOrigin + '/');
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      const beforeRepeat = hits.length;
+      await navigate(page, oldLink);
+      await expectBlocked(page, 'loop');
+      const retry = page.getByRole('button', {name: 'Open destination homepage once', exact: true});
+      await retry.waitFor({state: 'visible'});
+      await page.getByText(targetOrigin + '/', {exact: true}).waitFor();
+      assert.equal(hits.slice(beforeRepeat).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico').length, 0,
+        'A blocked repeat must not retry the destination automatically.');
+      await Promise.all([page.waitForURL(targetOrigin + '/'), retry.click()]);
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      const retried = hits.slice(beforeRepeat).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico');
+      assert.equal(retried.length, 1);
+      assert.equal(retried[0].path, '/', 'The retry must strip the old deep path, query and fragment.');
+      assert.equal(retried[0].referrer, null);
+      assert.equal(hits.slice(beforeRepeat).some(hit => hit.host === `old.test:${port}`), false);
+    } finally {
+      await page.close();
+      await writeConfig(baseline);
+    }
+  });
+  await check('B14b_homepage_retry_still_blocks_a_new_destination_bounce', async () => {
+    const homepage = structuredClone(baseline);
+    homepage.mappings[0].pathPolicy = 'homepage';
+    await writeConfig(homepage);
+    const page = await freshPage();
+    try {
+      await navigate(page, sourceOrigin + '/first-link');
+      await page.waitForURL(targetOrigin + '/');
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      await navigate(page, sourceOrigin + '/another-deliberate-link');
+      await expectBlocked(page, 'loop');
+      const retry = page.getByRole('button', {name: 'Open destination homepage once', exact: true});
+      await retry.waitFor({state: 'visible'});
+      await page.evaluate(() => { window.__beforeLoopRetry = true; });
+      const beforeRetry = hits.length;
+      bounceHomepage = true;
+      await retry.click();
+      await page.waitForFunction(() => !window.__beforeLoopRetry && document.body.dataset.reason === 'loop');
+      await expectBlocked(page, 'loop');
+      await page.getByRole('button', {name: 'Open destination homepage once', exact: true}).waitFor({state: 'visible'});
+      const retried = hits.slice(beforeRetry).filter(hit => hit.host === `new.test:${port}` && hit.path !== '/favicon.ico');
+      assert.equal(retried.length, 1, 'One deliberate retry must not disable protection or produce automatic retries.');
+      assert.equal(retried[0].path, '/');
+      assert.equal(hits.slice(beforeRetry).some(hit => hit.host === `old.test:${port}`), false,
+        'A bounce into another old path must be stopped before reaching the old origin.');
+    } finally {
+      bounceHomepage = false;
+      await page.close();
+      await writeConfig(baseline);
+    }
+  });
+  await check('B14c_loop_retry_revalidates_changed_mapping_policy', async () => {
+    const homepage = structuredClone(baseline);
+    homepage.mappings[0].pathPolicy = 'homepage';
+    await writeConfig(homepage);
+    const page = await freshPage();
+    try {
+      await navigate(page, sourceOrigin + '/first-link');
+      await page.waitForURL(targetOrigin + '/');
+      await page.getByRole('heading', {name: 'Controlled origin'}).waitFor();
+      await navigate(page, sourceOrigin + '/repeat-link');
+      await expectBlocked(page, 'loop');
+      const retry = page.getByRole('button', {name: 'Open destination homepage once', exact: true});
+      await retry.waitFor({state: 'visible'});
+      const changed = structuredClone(homepage);
+      changed.generation = 'loop-retry-policy-changed';
+      changed.mappings[0].destinationOrigin = `http://replacement.test:${port}`;
+      await writeConfig(changed);
+      const beforeRetry = hits.length;
+      await retry.click();
+      await expectBlocked(page, 'changed');
+      assert.equal(hits.slice(beforeRetry).filter(hit => hit.path !== '/favicon.ico').length, 0,
+        'A stale loop-recovery choice must not contact either the old or changed destination.');
+    } finally {
+      await page.close();
+      await writeConfig(baseline);
+    }
   });
   await check('B15_ungranted_source_gate_refused', async () => {
     const ungranted = structuredClone(baseline);

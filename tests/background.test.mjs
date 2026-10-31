@@ -11,7 +11,7 @@ const extensionId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const extensionUrl = path => `chrome-extension://${extensionId}/${path}`;
 const optionsSender = { id: extensionId, url: extensionUrl('options.html') };
 const popupSender = { id: extensionId, url: extensionUrl('popup.html') };
-const routeSender = { id: extensionId, url: extensionUrl('route.html'), tab: { id: 7 }, frameId: 0 };
+const routeSender = { id: extensionId, url: extensionUrl('route.html'), tab: { id: 7 }, frameId: 0, documentId: 'gate-document-1' };
 const clone = value => structuredClone(value);
 function event() {
   const listeners = [];
@@ -156,6 +156,68 @@ test('repeated family switch is blocked by the tab-session loop guard', async ()
   const second = await send({ type: 'resolve', envelope: envelope() }, routeSender); assert.equal(second.data.reason, 'loop');
   assert.equal(chromeMock.storage.local.values.receipts.length, 1);
 });
+async function retryPreview() {
+  assert.equal((await send({type: 'resolve', envelope: envelope()}, routeSender)).data.status, 'ready');
+  const second = await send({type: 'resolve', envelope: envelope('https://old-site.com/another-old-link?public=yes#private')}, routeSender);
+  assert.equal(second.data.reason, 'loop');
+  assert.equal(second.data.homepage, 'https://current-site.com/');
+  assert.equal(typeof second.data.retryToken, 'string');
+  return {type: 'retryRoute', envelope: envelope(), expectedUrl: second.data.homepage, retryToken: second.data.retryToken};
+}
+test('deliberate loop recovery opens only the current homepage and renews automatic protection', async () => {
+  reset(); grant(); const retry = await retryPreview();
+  const result = await send(retry, routeSender);
+  assert.equal(result.data.status, 'ready');
+  assert.equal(result.data.url, 'https://current-site.com/');
+  assert.equal(chromeMock.storage.local.values.receipts.length, 2);
+  const bounce = await send({type: 'resolve', envelope: envelope('https://old-site.com/different-return-path')}, {...routeSender, documentId: 'bounced-gate'});
+  assert.equal(bounce.data.reason, 'loop');
+  assert.equal(chromeMock.storage.local.values.receipts.length, 2);
+  assert.equal((await send(retry, routeSender)).data.reason, 'changed');
+  assert.ok(!JSON.stringify(chromeMock.storage.session.values.routeRetries).includes('private'));
+});
+test('loop recovery capabilities are single-use even for concurrent clicks', async () => {
+  reset(); grant(); const retry = await retryPreview();
+  const results = await Promise.all([send(retry, routeSender), send(retry, routeSender)]);
+  assert.deepEqual(results.map(result => result.data.status), ['ready', 'blocked']);
+  assert.equal(results[1].data.reason, 'changed');
+  assert.equal(chromeMock.storage.local.values.receipts.length, 2);
+});
+test('loop recovery cannot cross documents, tabs, frames, targets or web senders', async () => {
+  reset(); grant(); const retry = await retryPreview();
+  for (const sender of [{...routeSender, documentId: 'other-document'}, {...routeSender, documentId: undefined}, {...routeSender, tab: {id: 8}}, {...routeSender, frameId: 1}]) {
+    assert.equal((await send(retry, sender)).data.status, 'blocked');
+  }
+  assert.equal((await send({...retry, expectedUrl: 'https://attacker.com/'}, routeSender)).data.reason, 'changed');
+  assert.equal((await send({...retry, retryToken: 'forged'}, routeSender)).data.reason, 'changed');
+  assert.equal((await send(retry, {...routeSender, url: 'https://attacker.com/route.html'})).ok, false);
+  assert.equal(chromeMock.storage.local.values.receipts.length, 1);
+  assert.equal((await send(retry, routeSender)).data.status, 'ready', 'invalid requests must not confer routing authority');
+});
+test('loop recovery rechecks current policy and its bounded authorization', async t => {
+  const mutations = {
+    'generation changes': () => {chromeMock.storage.local.values.config.generation = 'changed-generation';},
+    'destination changes': () => {chromeMock.storage.local.values.config.mappings[0].destinationOrigin = 'https://replacement-site.com';},
+    'mapping removed': () => {chromeMock.storage.local.values.config.mappings = [];},
+    'mapping disabled': () => {chromeMock.storage.local.values.config.mappings[0].enabled = false;},
+    'global pause': () => {chromeMock.storage.local.values.config.paused = true;},
+    'permission revoked': () => {grants.clear();},
+    'mapping expired': () => {const m = chromeMock.storage.local.values.config.mappings[0]; m.createdAt = now() - 7200000; m.expiresAt = now() - 3600000;},
+    'retry expired': () => {chromeMock.storage.session.values.routeRetries['7'].expiresAt = now() - 1;},
+    'clock moved backwards': () => {chromeMock.storage.session.values.routeRetries['7'].expiresAt = now() + 180000;},
+  };
+  for (const [name, mutate] of Object.entries(mutations)) await t.test(name, async () => {
+    reset(); grant(); const retry = await retryPreview(); mutate();
+    assert.equal((await send(retry, routeSender)).data.status, 'blocked');
+    assert.equal(chromeMock.storage.local.values.receipts.length, 1);
+  });
+});
+test('closing a tab removes its outstanding homepage recovery capability', async () => {
+  reset(); grant(); const retry = await retryPreview();
+  chromeMock.tabs.onRemoved.emit(7); await send({type: 'read'});
+  assert.deepEqual(chromeMock.storage.session.values.routeRetries, {});
+  assert.equal((await send(retry, routeSender)).data.reason, 'changed');
+});
 test('undo rejects another tab and same-origin navigation after the recorded switch', async () => {
   reset(); grant(); const result = await send({ type: 'resolve', envelope: envelope() }, routeSender); const receiptId = String(chromeMock.storage.local.values.receipts[0].at);
   tabs.set(7, { id: 7, url: result.data.url });
@@ -291,4 +353,10 @@ test('manual and confirmation previews of signed aliases retain the same family 
   assert.equal(sensitive.data.reason, 'manual'); assert.equal(sensitive.data.familyId, 'docs');
   const second = await send({ type: 'confirmRoute', envelope: sensitiveEnvelope, expectedUrl: sensitive.data.homepage }, routeSender);
   assert.equal(second.data.reason, 'loop', 'confirmation must not bypass an already-used family attempt');
+  const retry = await send({type: 'retryRoute', envelope: sensitiveEnvelope, expectedUrl: second.data.homepage, retryToken: second.data.retryToken}, routeSender);
+  assert.equal(retry.data.status, 'ready'); assert.equal(retry.data.url, 'https://current-docs.com/');
+  const sibling = await send({type: 'resolve', envelope: firstEnvelope}, {...routeSender, documentId: 'new-sibling-gate'});
+  assert.equal(sibling.data.reason, 'confirmation');
+  const siblingConfirmed = await send({type: 'confirmRoute', envelope: firstEnvelope, expectedUrl: sibling.data.homepage}, {...routeSender, documentId: 'new-sibling-gate'});
+  assert.equal(siblingConfirmed.data.reason, 'loop', 'deliberate recovery renews the guard across signed sibling aliases');
 });

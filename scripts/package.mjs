@@ -2,6 +2,9 @@ import {mkdir, cp, rm, readFile, writeFile} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 const config = await readFile('extension/build-config.js', 'utf8');
+const sourceManifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
+assert(/^\d+(?:\.\d+){0,3}$/.test(sourceManifest.version), 'A numeric Chrome extension version is required.');
+const archivePath = `dist/web-switcher-${sourceManifest.version}.zip`;
 assert.match(config, /export const ALLOW_TEST_ORIGINS = false;/, 'Never package fixture mode.');
 await mkdir('dist', {recursive: true});
 await rm('dist/web-switcher', {recursive: true, force: true});
@@ -21,6 +24,6 @@ if (process.env.WS_REGISTRY_KEYS_FILE || process.env.WS_REGISTRY_URL) {
   manifest.host_permissions = [url.origin + '/*'];
   await writeFile('dist/web-switcher/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
 }
-const zip = spawnSync('python3', ['-c', "from pathlib import Path; from zipfile import ZipFile,ZIP_DEFLATED; root=Path('dist/web-switcher'); z=ZipFile('dist/web-switcher-0.2.0.zip','w',ZIP_DEFLATED); [z.write(p,p.relative_to(root)) for p in sorted(root.rglob('*')) if p.is_file()]; z.close()"], {stdio: 'inherit'});
+const zip = spawnSync('python3', ['-c', "import sys; from pathlib import Path; from zipfile import ZipFile,ZIP_DEFLATED; root=Path('dist/web-switcher'); z=ZipFile(sys.argv[1],'w',ZIP_DEFLATED); [z.write(p,p.relative_to(root)) for p in sorted(root.rglob('*')) if p.is_file()]; z.close()", archivePath], {stdio: 'inherit'});
 if (zip.status !== 0) throw new Error('ZIP creation requires Python 3.');
-console.log('Created dist/web-switcher-0.2.0.zip. Load dist/web-switcher unpacked in a permitted browser profile. Store and production release gates remain open.');
+console.log(`Created ${archivePath}. Load dist/web-switcher unpacked in a permitted browser profile. Store and production release gates remain open.`);
